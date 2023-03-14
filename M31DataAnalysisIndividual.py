@@ -60,6 +60,8 @@ def plot_velocity_baseline(velocity,flux,title):
 
     found_peaks = signal.find_peaks(flux,height = np.max(flux)/8, distance = 1,width=2)[0]
     peak_widths = signal.peak_widths(flux,found_peaks,rel_height=0.6)[0]
+    
+    #PEAKS BY INDEX
 
     peak_string = ""
     width_string = ""
@@ -71,7 +73,22 @@ def plot_velocity_baseline(velocity,flux,title):
 
     with open("CropPositions_new.txt","a") as f:
         f.write(title + ","+peak_string.strip()+","+width_string.strip()+"\n")
+        
+    #PEAKS BY VALUE for gaussian
 
+    # peak_string = ""
+    # width_string = ""
+    # amp_string = ""
+    # for i in range(0,len(found_peaks)):
+    #     print("Peak ",i,": ",found_peaks[i])
+    #     print("Width: ",int(peak_widths[i]))
+    #     peak_string += str(int(found_peaks[i])) + " "
+    #     width_string += str(int(peak_widths[i])) + " "
+
+    # with open("GaussianPositions_new.txt","a") as f:
+    #     f.write(title + ","+peak_string.strip()+","+width_string.strip()+","+amp_string.strip()+"\n")
+
+    """
     plt.plot(velocity[found_peaks],flux[found_peaks],"r.")
 
     cropped_velocity,cropped_flux = remove_peaks(velocity,flux,found_peaks,peak_widths)
@@ -90,6 +107,7 @@ def plot_velocity_baseline(velocity,flux,title):
     plt.show() #Displays graph
     plt.clf()
 
+    """
 def plot_all_graphs():
     for entry in os.scandir("M31Backup\\"):
         if entry.path.startswith("M"):
@@ -97,6 +115,30 @@ def plot_all_graphs():
             # check = input()
             # while input() != "y":
             #     check = input()
+
+def save_peaks_by_index(velocity,flux,title):
+    crops = crop_params[title]
+    peaks = crops[0].split(" ")
+    widths = crops[1].split(" ")
+   
+    peak_string = ""
+    width_string = ""
+    amp_string = ""
+    
+    for i in range(0,len(peaks)):
+        if velocity[int(peaks[i])] > 0:
+                max_position = int(peaks[i])
+                width = int(widths[i])
+                a = flux[max_position] #Height of curve's peak in K kms^-1
+                b = velocity[int(peaks[i])] #Position of centre of peak in km/s
+                c = width #np.abs(velocity[max_position-width] - velocity[max_position+width]) #Width peak in km/s
+
+                peak_string += str(b) + " "
+                width_string += str(c) + " "
+                amp_string += str(a) + " "
+
+    with open("GaussianPositions_new.txt","a") as f:
+        f.write(title + ","+peak_string.strip()+","+width_string.strip()+","+amp_string.strip()+"\n")
 
 
 def analyse(path):
@@ -115,6 +157,7 @@ def analyse(path):
     plot_velocity_baseline(velocity,uncalibrated_flux,title)
 
 open("CropPositions_new.txt", 'w').close() #clear file
+open("GaussianPositions_new.txt", 'w').close() #clear file
 #print(calibrate_flux("M31Backup\\S8B.TXT"))
 #analyse("M31Backup\\M31P85.TXT")
 #analyse("M31Backup\\S8A.TXT")

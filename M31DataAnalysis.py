@@ -144,7 +144,7 @@ def plot_velocity_without_baseline_corrected(velocity,flux,title):
 
     plt.rcParams["figure.figsize"] = (10,8) #Set the size of the final graph to 15x5 inches
     plt.xlabel('Velocity [kms^-1]')
-    plt.ylabel('Flux [K kms^-1]')
+    plt.ylabel('Flux [K]')
     plt.title(title+ ' Velocity-Flux Plot (Corrected)')
 
     #PLOTTING DATA ---------------------------------------------------------------------------------------------------------------
@@ -171,28 +171,25 @@ def plot_velocity_for_integration(velocity,flux,title):
 
     plt.rcParams["figure.figsize"] = (7,5) #Set the size of the final graph to 15x5 inches
     plt.xlabel('Velocity [kms^-1]')
-    plt.ylabel('Flux [K kms^-1]')
+    plt.ylabel('Flux [K]')
     plt.title(title+ ' Velocity-Flux Plot (Corrected)')
 
     #PLOTTING DATA ---------------------------------------------------------------------------------------------------------------
-    #plt.plot(velocity, flux,PD,zorder=0)
+    plt.plot(velocity, flux,PD,zorder=0)
     
     crops = gaussian_params[title]
-    peaks = crops[0].split(" ")
-    widths = crops[1].split(" ")
+    peaks = np.array(crops[0].split(" ")).astype(float)
+    widths = np.array(crops[1].split(" ")).astype(float)
+    amps = np.array(crops[2].split(" ")).astype(float)
     
     peaks_to_subtract = np.full(np.size(velocity),0)
     
     for i in range(0,len(peaks)):
-        if velocity[int(peaks[i])] > 0:
-            max_position = int(peaks[i])
-            width = int(widths[i])
-            a = flux[max_position] #Height of curve's peak in K kms^-1
-            b = velocity[int(peaks[i])] #Position of centre of peak in km/s
-            c = width #np.abs(velocity[max_position-width] - velocity[max_position+width]) #Width peak in km/s
-            #plt.plot(velocity[max_position-width*2:max_position+width*2],gaussian(velocity,a,b,c)[max_position-width*2:max_position+width*2])
-
-            peaks_to_subtract = np.maximum(gaussian(velocity,a,b,c),peaks_to_subtract)
+        a = amps[i] 
+        b = peaks[i] 
+        c = widths[i] 
+        plt.plot(velocity,gaussian(velocity,a,b,c))
+        peaks_to_subtract = np.maximum(gaussian(velocity,a,b,c),peaks_to_subtract)
     
     plt.plot(velocity, flux-peaks_to_subtract,"r--",zorder=5)
     plt.show() #Displays graph
@@ -216,26 +213,56 @@ def analyse(path,rtn=False):
     uncalibrated_flux =  np.array(data[:,0])
 
     velocity = scaled_velocity*bin_width + velocity_addition
-    elevation_calibrated_flux = calibrate_elevation(uncalibrated_flux, elevation)
-
+    
+    #ORIGINAL
     #plot_velocity_baseline(velocity,uncalibrated_flux,title)
-
-    #plot_velocity_baseline(velocity,elevation_calibrated_flux,title)
-
-    cropped_velocity,cropped_flux = remove_peaks(velocity,elevation_calibrated_flux,title)
+    
+    #REMOVE BASELINE
+    cropped_velocity,cropped_flux = remove_peaks(velocity,uncalibrated_flux,title)
     fit = fit_equation(cropped_velocity,cropped_flux)
-
-    flux_without_baseline = elevation_calibrated_flux - np.polyval(fit, velocity)
-
+    fit = np.polyfit(cropped_velocity,cropped_flux,deg=4)
+    
+    flux_without_baseline = uncalibrated_flux - np.polyval(fit, velocity)
+    
+    #plot_velocity_without_baseline(velocity,flux_without_baseline,title)
+    
+    #CALIBRATE FOR ELEVATION
+    elevation_calibrated_flux = calibrate_elevation(flux_without_baseline, elevation)
     #plot_velocity_without_baseline(velocity,flux_without_baseline,title)
 
+    #plot_velocity_without_baseline(velocity,elevation_calibrated_flux,title)
+    
+    #SCALE BRIGTNESS
     calibrated_flux = flux_without_baseline*FLUX_CALIBRATION
 
     #plot_velocity_without_baseline_corrected(velocity,calibrated_flux,title)
 
     if rtn:
         return velocity,calibrated_flux
+    
+def save_peaks_by_index(velocity,flux,title):
+    crops = crop_params[title]
+    peaks = crops[0].split(" ")
+    widths = crops[1].split(" ")
+   
+    peak_string = ""
+    width_string = ""
+    amp_string = ""
+    
+    for i in range(0,len(peaks)):
+        max_position = int(peaks[i])
+        width = int(widths[i])
+        a = flux[max_position] #Height of curve's peak in K kms^-1
+        b = velocity[int(peaks[i])] #Position of centre of peak in km/s
+        c = width #np.abs(velocity[max_position-width] - velocity[max_position+width]) #Width peak in km/s
 
+        peak_string += str(round(b,1)) + " "
+        width_string += str(round(c,1)) + " "
+        amp_string += str(round(a,1)) + " "
+
+    with open("GaussianPositions_new.txt","a") as f:
+        f.write(title + ","+peak_string.strip()+","+width_string.strip()+","+amp_string.strip()+"\n")
+        
 def integrate(path,velocity,calibrated_flux):
     title = path[10:-4]
     metadata = np.genfromtxt(path,delimiter='=',skip_header=0, skip_footer=514,dtype=str)
@@ -267,21 +294,20 @@ def plot_coordinates():
         plt.annotate(text,(ra_coords[i],dec_coords[i]))
     plt.show()
 
-
 def integrate_all_graphs():
     for entry in os.scandir("M31Backup\\"):
         title = entry.path[10:-4]
         if title.startswith("M"):
             velocity,flux = analyse(entry.path,True)
             plot_velocity_for_integration(velocity,flux,title)
-            
-#plot_coordinates()
-#subplot_test()
+            #save_peaks_by_index(velocity,flux,title)
+     
+plot_coordinates()
 
 FLUX_CALIBRATION = calibrate_flux("M31Backup\\S8A.TXT")
 #print(FLUX_CALIBRATION)
 
-individual_path = "M31Backup\\M31P74.TXT"
+individual_path = "M31Backup\\M31P95.TXT"
 velocity,flux = analyse(individual_path,True)
 plot_velocity_for_integration(velocity,flux,individual_path[10:-4])
 #plot_all_graphs()
