@@ -154,18 +154,18 @@ def plot_velocity_without_baseline_corrected(velocity,flux,title):
 
     #plt.savefig("Graphs\\"+title +"DegreesVelocity.png", dpi=600) #Saves graph
     plt.show() #Displays graph
-    plt.clf()
+    #plt.clf()
     
 def gaussian(x,a,b,c):
     return a*np.exp( -( (x-b)**2 )/(2*c**2))
     
 def plot_velocity_for_integration(velocity,flux,title):
-    # if int_params[title][2] == "1":
-    #     min_bound = int(int_params[title][0])
-    #     max_bound = int(int_params[title][1])
-    #     plt.plot([velocity[min_bound],velocity[min_bound]],[min(flux),max(flux)],"r--")
-    #     plt.plot([velocity[max_bound],velocity[max_bound]],[min(flux),max(flux)],"r--")
-    #     plt.legend(["Data","Integration Bounds"])
+    if int_params[title][2] == "1":
+        print("Separate Peak")
+        min_bound = int(int_params[title][0])
+        max_bound = int(int_params[title][1])
+        plt.plot([velocity[min_bound],velocity[min_bound]],[0,max(flux)],"r--")
+        plt.plot([velocity[max_bound],velocity[max_bound]],[0,max(flux)],"r--")
     
     #VISUALS ---------------------------------------------------------------------------------------------------------------
 
@@ -173,25 +173,26 @@ def plot_velocity_for_integration(velocity,flux,title):
     plt.xlabel('Velocity [kms^-1]')
     plt.ylabel('Flux [K]')
     plt.title(title+ ' Velocity-Flux Plot (Corrected)')
-
+    plt.xlim([-150,100])
     #PLOTTING DATA ---------------------------------------------------------------------------------------------------------------
     plt.plot(velocity, flux,PD,zorder=0)
+    if True: #int_params[title][2] == "0":
+        crops = gaussian_params[title]
+        peaks = np.array(crops[0].split(" ")).astype(float)
+        widths = np.array(crops[1].split(" ")).astype(float)
+        amps = np.array(crops[2].split(" ")).astype(float)
     
-    crops = gaussian_params[title]
-    peaks = np.array(crops[0].split(" ")).astype(float)
-    widths = np.array(crops[1].split(" ")).astype(float)
-    amps = np.array(crops[2].split(" ")).astype(float)
+        peaks_to_subtract = np.full(np.size(velocity),0)
     
-    peaks_to_subtract = np.full(np.size(velocity),0)
+        for i in range(0,len(peaks)):
+            a = amps[i] 
+            b = peaks[i] 
+            c = widths[i] 
+            plt.plot(velocity,gaussian(velocity,a,b,c))
+            peaks_to_subtract = np.maximum(gaussian(velocity,a,b,c),peaks_to_subtract)
     
-    for i in range(0,len(peaks)):
-        a = amps[i] 
-        b = peaks[i] 
-        c = widths[i] 
-        plt.plot(velocity,gaussian(velocity,a,b,c))
-        peaks_to_subtract = np.maximum(gaussian(velocity,a,b,c),peaks_to_subtract)
-    
-    plt.plot(velocity, flux-peaks_to_subtract,"r--",zorder=5)
+        plt.plot(velocity, flux-peaks_to_subtract,"r--",zorder=5)
+    print(simpson(flux-peaks_to_subtract, velocity))
     plt.show() #Displays graph
     plt.clf()
 
@@ -233,7 +234,7 @@ def analyse(path,rtn=False):
     #plot_velocity_without_baseline(velocity,elevation_calibrated_flux,title)
     
     #SCALE BRIGTNESS
-    calibrated_flux = flux_without_baseline*FLUX_CALIBRATION
+    calibrated_flux = elevation_calibrated_flux*FLUX_CALIBRATION
 
     #plot_velocity_without_baseline_corrected(velocity,calibrated_flux,title)
 
@@ -263,13 +264,20 @@ def save_peaks_by_index(velocity,flux,title):
     with open("GaussianPositions_new.txt","a") as f:
         f.write(title + ","+peak_string.strip()+","+width_string.strip()+","+amp_string.strip()+"\n")
         
-def integrate(path,velocity,calibrated_flux):
-    title = path[10:-4]
-    metadata = np.genfromtxt(path,delimiter='=',skip_header=0, skip_footer=514,dtype=str)
-    velocity_addition = float(metadata[-1][-1])
-    bin_width = float(metadata[-5][-1])
-    elevation = float(metadata[-11][-1])
     
+def match_coords():
+    file_coordinates = {}
+    for entry in os.scandir("M31Backup\\"):
+        title = entry.path[10:-4]
+        if title.startswith("M"):
+            title = entry.path[10:-4]
+            metadata = np.genfromtxt(entry.path,delimiter='=',skip_header=0, skip_footer=514,dtype=str)
+            ra = float(metadata[5][-1])
+            dec = float(metadata[6][-1])
+            file_coordinates[title] = [ra,dec]
+    return file_coordinates
+   
+                
 def plot_coordinates():
     ra_coords = np.empty(0)
     dec_coords = np.empty(0)
@@ -302,12 +310,14 @@ def integrate_all_graphs():
             plot_velocity_for_integration(velocity,flux,title)
             #save_peaks_by_index(velocity,flux,title)
      
-plot_coordinates()
+#plot_coordinates()
+#get elevations
 
 FLUX_CALIBRATION = calibrate_flux("M31Backup\\S8A.TXT")
+FILE_COORDS = match_coords()
 #print(FLUX_CALIBRATION)
 
-individual_path = "M31Backup\\M31P95.TXT"
+individual_path = "M31Backup\\M31P16.TXT"
 velocity,flux = analyse(individual_path,True)
 plot_velocity_for_integration(velocity,flux,individual_path[10:-4])
 #plot_all_graphs()
