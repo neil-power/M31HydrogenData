@@ -168,6 +168,18 @@ def remove_local_hydrogen(velocity,flux,title):
 def remove_local_hydrogen_by_average(velocity,flux):
     return velocity, flux- AVG_MILKY_WAY
     #*((AVG_MILKY_WAY/np.max(AVG_MILKY_WAY))*np.max(flux))
+    
+#MASS OF HYDROGEN ----------------------------------------------------------
+
+def get_neutral_H_mass(flux,velocity):
+    frequency = velocity*4.762e3
+    integral = (frequency[1]-frequency[0])*np.sum(flux)
+    integral_s = simpson(flux,frequency)
+    mass_atoms_cm = 3.488e14*integral
+    mass_sol_cm = 8.396e-58*mass_atoms_cm
+    mass_sol_kpc = mass_sol_cm*1/(1.05e-43)
+    mass_sol = mass_sol_kpc*4.83
+    return mass_sol
 
 #PLOTTING -------------------------------------------------------------------
 
@@ -176,7 +188,7 @@ def plot_velocity_baseline(velocity,flux,title):
     plt.ylabel('Uncalibrated Flux')
     plt.title(title+ ' Velocity-Uncorrected Flux Plot')
 
-    #PLOTTING DATA ------------------------------------------------------------
+    #PLOTTING DATA -----------------
 
     cropped_velocity,cropped_flux = remove_peaks(velocity,flux,title)
 
@@ -201,7 +213,6 @@ def plot_velocity_without_baseline(velocity,flux,title):
     plt.ylabel('Uncalibrated Flux')
     plt.title(title+ ' Velocity-Uncorrected Flux Plot (Background Corrected)')
 
-    #plt.ylim([-1,+1])
     plt.plot(velocity, flux,PD,zorder=0)
     plt.legend(["Data"])
 
@@ -285,7 +296,6 @@ def calibrate(path,rtn=False,plot=False):
 
 
 def integrate(velocity,flux,title,rtn=False,plot=False):
-    plt.plot(velocity, flux,PD,zorder=0)
     #Remove mystery peak
     flux[338:342] = (flux[342] - flux[338]) * np.array([0,1,2,3]) / (velocity[342]-velocity[338]) + flux[338]
     if int_params[title][2] == "1":
@@ -299,8 +309,8 @@ def integrate(velocity,flux,title,rtn=False,plot=False):
     if int_params[title][2] == "0":
         #local_corrected_velocity, local_corrected_flux = remove_local_hydrogen(velocity, flux, title)
         local_corrected_velocity, local_corrected_flux = remove_local_hydrogen_by_average(velocity, flux)
-
     if plot:
+        plt.plot(velocity, flux,PD,zorder=0)
         plt.xlabel('Velocity [kms^-1]')
         plt.ylabel('Flux [K]')
         plt.title(title+ ' Velocity-Flux Plot (Corrected)')
@@ -308,8 +318,9 @@ def integrate(velocity,flux,title,rtn=False,plot=False):
         plt.plot(local_corrected_velocity, local_corrected_flux,"r--",zorder=0)
         plt.show() #Displays graph
     area = simpson(local_corrected_flux, local_corrected_velocity)
+    mass = get_neutral_H_mass(local_corrected_flux, local_corrected_velocity)
     if rtn:
-        return area
+        return area, mass
 
 
 #BATCH PROCESS DATA ----------------------------------------------------------
@@ -324,64 +335,64 @@ def integrate_all_graphs():
     ra_coords = []
     dec_coords = []
     titles = []
+    total_mass = 0
     for entry in os.scandir("M31Backup\\"):
         title = entry.path[10:-4]
         if title.startswith("M"):
             titles.append(title)
             velocity,flux = calibrate(entry.path,rtn=True)
-            area = integrate(velocity,flux,title,rtn=True)
+            area,mass = integrate(velocity,flux,title,rtn=True)
+            total_mass += mass
+            #if mass<0:
+            #   print(title, mass)
+            print(title, mass)
             results.append(area)
             ra_coords.append(FILE_COORDS[title][0])
             dec_coords.append(FILE_COORDS[title][1])
-    print(results)
-    plt.xlabel('Right Ascension [degrees]')
-    plt.ylabel('Flux [K km^s]')
-    plt.title("Integration by coordinates")
-    plt.plot(ra_coords,results,"rx")
-    plt.gca().invert_xaxis()
-    plt.show()
-
-    plt.xlabel('Declination [degrees]')
-    plt.ylabel('Flux [K km^s]')
-    plt.title("Integration by coordinates")
-    plt.plot(dec_coords,results,"gx")
-    plt.gca().invert_xaxis()
-    plt.show()
-
-    plt.ylabel('Declination [degrees]')
-    plt.xlabel('Right Ascension [degrees]')
-    plt.title("Flux Integration contour")
-    plt.gca().invert_xaxis()
-
-    z = np.zeros((9,12))
-
-    for i,title in enumerate(titles):
-        title_nums = title[4:]
-        y_index = int(title_nums[:-1])-1
-        x_index = int(title_nums[-1])
-        #print(x_index,y_index)
-        z[x_index][y_index] =  results[i]
-        #z[x_index][y_index] =  title_nums #
-
-    # for i in range(0,9):
-    #     print(z[i])
-    z = np.transpose(z)
-    #Z is in correct format, 9 x 12
-    x = np.unique(ra_coords)
-    print(x) #length 9
-    y = np.unique(dec_coords)
-    print(y) #length 12
-    X,Y = np.meshgrid(x,y) # 12 x 9
-    print(np.shape(X))
-    # plt.xlim(0.5,0.3)
-    # plt.ylim(39,43)
-
-    # plt.ylim(0.6,0.3) #wrong
-    # plt.xlim(39,45)
-    plt.contourf(X,Y,z)
-    #plt.clabel(plt.contour(X,Y,z),inline=True, fontsize=10)
-    plt.colorbar()
-    plt.show()
+    print("The total mass is {0:3.2e} solar masses".format(total_mass))
+    #print(results)
+    plot = False
+    plt.clf()
+    if plot:
+        
+        # plt.xlabel('Right Ascension [degrees]')
+        # plt.ylabel('Flux [K km^s]')
+        # plt.title("Integration by coordinates")
+        # plt.plot(ra_coords,results,"rx")
+        # plt.gca().invert_xaxis()
+        # plt.show()
+    
+        # plt.xlabel('Declination [degrees]')
+        # plt.ylabel('Flux [K km^s]')
+        # plt.title("Integration by coordinates")
+        # plt.plot(dec_coords,results,"gx")
+        # plt.gca().invert_xaxis()
+        # plt.show()
+    
+        plt.ylabel('Declination [degrees]')
+        plt.xlabel('Right Ascension [degrees]')
+        plt.title("Flux Integration contour")
+        plt.gca().invert_xaxis()
+    
+        z = np.zeros((9,12))
+        for i,title in enumerate(titles):
+            title_nums = title[4:]
+            x_index = int(title_nums[-1])
+            y_index = int(title_nums[:-1])-1
+            z[x_index][y_index] =  results[i]
+    
+        z = np.transpose(z)
+        x = np.unique(ra_coords)
+        y = np.unique(dec_coords)
+        x = np.flip(x)
+        levels=np.linspace(-150,1100,15)
+        X,Y = np.meshgrid(x,y) # 12 x 9
+        # plt.xlim(0.49,0.31)
+        # plt.ylim(38.5,42.7)
+        plt.contour(X,Y,z,levels=levels)
+        #plt.clabel(plt.contour(X,Y,z),inline=True, fontsize=10)
+        plt.colorbar()
+        plt.show()
 
 
 #plot_coordinates()
