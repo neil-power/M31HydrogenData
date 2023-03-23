@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt #Import pyplot for plotting the graph
 from scipy.integrate import simpson
 
 MAX_DEGREE = 5
-PEAK_WIDTH = 40
 S8_FLUX = 850 #K km/s
+M31DIST = 752 #Kpc
 PD = "b-"
 FD = "r-"
 
@@ -47,7 +47,7 @@ def match_coords():
             dec = float(dec_degrees) + (float(dec_minutes[:2])/60)
             ra_hours,ra_mins = metadata[5][-1].split(".")
             ra = (float(ra_hours) + float(ra_mins[:2])/60)*15#np.cos(np.deg2rad(dec))
-            
+
             file_coordinates[title] = [ra,dec]
     return file_coordinates #Returns dictionary
 
@@ -120,7 +120,7 @@ def remove_peaks(x,y,title):
     peaks = crops[0].split(" ")
     widths = crops[1].split(" ")
     boolean_to_remove = np.full(np.size(y),True)
-
+    #boolean_to_remove[5] = False
     for i in range(0,len(peaks)):
         max_position = int(peaks[i])
         width_to_remove = int(widths[i])*2
@@ -174,8 +174,10 @@ def remove_local_hydrogen_by_average(velocity,flux):
 
 #MASS OF HYDROGEN ----------------------------------------------------------
 
-def get_neutral_H_mass(flux,velocity):
+def get_neutral_H_mass_density(flux,velocity):
     frequency = velocity #*4.762e3
+    delta_f = np.average(np.diff(frequency))
+    integral = delta_f*np.sum(flux)
     integral = (frequency[1]-frequency[0])*np.sum(flux)
     # integral_s = simpson(flux,frequency)
     # mass_atoms_cm = 3.488e14*integral
@@ -183,22 +185,19 @@ def get_neutral_H_mass(flux,velocity):
     # mass_sol_kpc = mass_sol_cm*1/(1.05e-43)
     # mass_sol = mass_sol_kpc*4.83
     #print(4.762e3*3.488e14*8.396e-58*(1/1.05e-43)) #Should be 14604
-    mass_sol = 14604*integral*4.83
-
-    obs_radius = ((11.6/60)/2 )**2*np.pi #Might needs square angle stuff
-    scale_rectangle = 0.5*0.33
-    mass_sol = (mass_sol/obs_radius)*scale_rectangle
-    print(obs_radius/scale_rectangle)
+    mass_sol = 14604*integral
     return mass_sol
 
+def get_neutral_H_mass(mass_density,title):
+    dec = float(FILE_COORDS[title][1])
+    area = np.deg2rad(0.5)*np.deg2rad(0.33)*np.cos(np.deg2rad(dec))*M31DIST**2
+    mass = mass_density*area#square_rectangle_kpc
+    return mass
+
 def get_M31_area(ra_coords,dec_coords):
-    x = np.unique(ra_coords)
-    y = np.unique(dec_coords)
-    ra_diff = np.average(np.diff(x))
-    dec_diff = np.average(np.diff(y))
-    ind_area = ra_diff*dec_diff
-    #print(ra_diff,dec_diff)
-    area = ind_area*len(ra_coords)
+    area = 0
+    for dec in dec_coords:
+        area += np.deg2rad(0.5)*np.deg2rad(0.33)*np.cos(np.deg2rad(dec))*M31DIST**2
     return area
 
 #PLOTTING -------------------------------------------------------------------
@@ -269,24 +268,23 @@ def plot_coordinates():
     plt.gca().invert_xaxis()
     #beam width is 11.6 arcsec
     ax.set_aspect('equal', adjustable='datalim')
-    radius = (11.6/60)/2
+    radius_deg = (11.6/60)/2
     for i,text in enumerate(titles):
-        circle1 = plt.Circle((ra_coords[i],dec_coords[i]), radius, color='b', fill=False)
-        ax.add_patch(circle1)
-        #ax.annotate(text,(ra_coords[i],dec_coords[i]))
-        height = 0.5#*np.cos(np.deg2rad(dec_coords[i]))
-        width = 0.33
-        rectangle1 = plt.Rectangle((ra_coords[i]-height/2,dec_coords[i]-width/2),height,width,color='g', fill=False)
-        ax.add_patch(rectangle1)
-    print("Observed area is {0:3.2f} square degrees".format(np.pi*radius**2*len(titles)))
-    print("M31 area is {0:3.2f} square degrees".format(get_M31_area(ra_coords, dec_coords)))
-    plt.show()
+        ax.annotate(text,(ra_coords[i],dec_coords[i]))
+        # circle1 = plt.Circle((ra_coords[i],dec_coords[i]), radius_deg, color='b', fill=False)
+        # ax.add_patch(circle1)
+        # height = 0.5#*np.cos(np.deg2rad(dec_coords[i]))
+        # width = 0.33
+        # rectangle1 = plt.Rectangle((ra_coords[i]-height/2,dec_coords[i]-width/2),height,width,color='b', fill=False)
+        # ax.add_patch(rectangle1)
 
-def plot_contour(ra_coords,dec_coords,results,titles,graph_title):
+    #plt.show()
+
+def plot_mass_contour(ra_coords,dec_coords,results,titles):
+    plt.gca().invert_xaxis()
     plt.ylabel('Declination [degrees]')
     plt.xlabel('Right Ascension [degrees]')
-    plt.title(graph_title+" integration contour")
-    plt.gca().invert_xaxis()
+    plt.title("Neutral HI mass density contour")
 
     z = np.zeros((9,12))
     for i,title in enumerate(titles):
@@ -304,10 +302,52 @@ def plot_contour(ra_coords,dec_coords,results,titles,graph_title):
     #plt.xlim(max(x),8.4)
     #plt.ylim(38.5,42.7)
     plt.contourf(X,Y,z,levels=levels)
-    #plt.contourf(X,Y,z)
-    #plt.clabel(plt.contour(X,Y,z),inline=True, fontsize=10)
+    plt.colorbar(label="")
+    plt.show()
+
+def plot_velocity_contour(ra_coords,dec_coords,results,titles):
+    plot_coordinates()
+    #plt.gca().invert_xaxis()
+    plt.ylabel('Declination [degrees]')
+    plt.xlabel('Right Ascension [degrees]')
+    plt.title("Velocity contour")
+
+    z = np.zeros((9,12))
+    for i,title in enumerate(titles):
+        title_nums = title[4:]
+        x_index = int(title_nums[-1])
+        y_index = int(title_nums[:-1])-1
+        z[x_index][y_index] =  results[i]
+
+    z = np.transpose(z)
+    x = np.unique(ra_coords)
+    y = np.unique(dec_coords)
+    x = np.flip(x)
+    #levels=np.linspace(min(results),max(results),55)
+    levels = np.linspace(-800,200,20)
+    X,Y = np.meshgrid(x,y) # 12 x 9
+    plt.contourf(X,Y,z,levels=levels)
     plt.colorbar()
     plt.show()
+    
+    #look at griddata to interpolate
+    #https://docs.astropy.org/en/stable/convolution/index.html
+    x_index = np.linspace(1,7,100)
+    y_index = (-12/9)*x_index+12
+    speed_vals = np.array([])
+    pos_vals = np.array([])
+    for i in range(x_index.size):
+        x = int(x_index[i])
+        y = int(y_index[i])
+        print("x:" , x)
+        print("y:" , y)
+        speed_vals = np.append(speed_vals, (z[y,x]+z[y+1,x+1]+z[y,x+1]+z[y+1,x])/4)
+        pos_vals = np.append(pos_vals, np.sqrt((12-X[y,x])**2+(39-Y[y,x])**2))
+    plt.plot(x_index,speed_vals*-1,"rx")
+    #print(speed_vals)
+    #print(pos_vals)
+    plt.show()
+        
 
 #MAIN FUNCTIONS ------------------------------------------------------------
 
@@ -378,9 +418,13 @@ def integrate(velocity,flux,title,rtn=False,plot=False):
         plt.show()
 
     area = simpson(local_corrected_flux, local_corrected_velocity)
-    mass = get_neutral_H_mass(local_corrected_flux, local_corrected_velocity)
+    delta_v = np.average(np.diff(local_corrected_velocity))
+    zeroth_moment = delta_v*np.sum(local_corrected_flux)
+    mass_density = get_neutral_H_mass_density(local_corrected_flux, local_corrected_velocity)
+    #local_corrected_flux[local_corrected_flux<0] = 0 #BODGE
+    first_moment = np.sum(local_corrected_velocity*local_corrected_flux)/np.sum(local_corrected_flux)
     if rtn:
-        return area, mass
+        return area, mass_density, zeroth_moment, first_moment
 
 
 #BATCH PROCESS DATA ----------------------------------------------------------
@@ -395,53 +439,64 @@ def integrate_all_graphs(plot=False):
     dec_coords = []
     areas = []
     titles = []
-    masses = []
+    mass_densities = []
+    zeroth_moments = []
+    first_moments = []
     total_mass = 0
     for entry in os.scandir("M31Backup\\"):
         title = entry.path[10:-4]
         if title.startswith("M"):
             titles.append(title)
             velocity, flux = calibrate(entry.path,rtn=True)
-            area, mass = integrate(velocity,flux,title,rtn=True)
-            total_mass += mass
-            # if mass<0:
-            #    print(title, mass)
+            area, mass_density,zeroth_moment, first_moment = integrate(velocity,flux,title,rtn=True)
+            if mass_density<0:
+                print(title, mass_density)
+            total_mass += get_neutral_H_mass(mass_density, title)
             areas.append(area)
-            masses.append(mass)
+            mass_densities.append(mass_density)
+            first_moments.append(first_moment)
+            zeroth_moments.append(zeroth_moment)
             ra_coords.append(FILE_COORDS[title][0])
             dec_coords.append(FILE_COORDS[title][1])
-    print("The total mass is {0:3.2e} solar masses".format(total_mass))
-    #print(results)
+
+    
+    if False:
+        radius_kpc = (3.37e-3)/2 *M31DIST
+        scan_area = np.pi*radius_kpc**2
+        total_scan_area = np.pi*radius_kpc**2*len(titles)
+        total_M31_area = get_M31_area(ra_coords, dec_coords)
+        avg_zeroth_moment = np.average(zeroth_moments)
+        avg_mass_density = np.average(mass_densities)
+
+        mass_1  =14604*avg_zeroth_moment*total_M31_area
+        #mass_2 = avg_mass_density*total_M31_area
+        mass_3 = total_mass
+        print("Observed area for one scan is {0:3.2f} kpc^2".format(scan_area))
+        print("Total observed area for all scans is {0:3.2e} kpc^2".format(total_scan_area))
+        print("Estimated M31 area by boxes is {0:3.2f} kpc^2".format(total_M31_area))
+        print("The average zeroth moment is {0:3.2f} K km/s".format(avg_zeroth_moment))
+        print("The average mass density is {0:3.2e} solar masses per kpc^2".format(avg_mass_density))
+        print("The total mass, using average zeroth moment times area, is {0:3.2e} solar masses".format(mass_1))
+        #print("The total mass, using average mass density times area, is {0:3.2e} solar masses".format(mass_2))
+        print("The total mass, scaling each scan to a box, is {0:3.2e} solar masses".format(mass_3))
+        #print(results)
 
     if plot:
-
-        # plt.xlabel('Right Ascension [degrees]')
-        # plt.ylabel('Flux [K km^s]')
-        # plt.title("Integration by coordinates")
-        # plt.plot(ra_coords,results,"rx")
-        # plt.gca().invert_xaxis()
-        # plt.show()
-
-        # plt.xlabel('Declination [degrees]')
-        # plt.ylabel('Flux [K km^s]')
-        # plt.title("Integration by coordinates")
-        # plt.plot(dec_coords,results,"gx")
-        # plt.gca().invert_xaxis()
-        # plt.show()
-
         #plot_contour(ra_coords,dec_coords,areas,titles,"Flux")
-        plot_contour(ra_coords,dec_coords,masses,titles,"Neutral hydrogen mass")
+        plot_mass_contour(ra_coords,dec_coords,mass_densities,titles)
+        plot_velocity_contour(ra_coords,dec_coords,first_moments,titles)
 
-
-
+def run_for_individual(title):
+    velocity,flux = calibrate("M31Backup\\"+title+".TXT",rtn=True,plot=True)
+    area, mass,zeroth_moment,first_moment = integrate(velocity,flux,title,rtn=True,plot=True)
+    print(title)
+    print("Area:  {0:3.2f} \n Mass: {1:3.2f} \n First Moment: {2:3.2f}".format(area, mass,first_moment))
 FLUX_CALIBRATION = calibrate_flux("M31Backup\\S8A.TXT")
 FILE_COORDS = match_coords()
 AVG_MILKY_WAY = get_average_milkyway()
-#print(FLUX_CALIBRATION)
-plot_coordinates()
-#title = "M31P86"
-#velocity,flux = calibrate("M31Backup\\"+title+".TXT",rtn=True,plot=True)
-#area, mass = integrate(velocity,flux,title,rtn=True,plot=True)
-# plot_velocity_for_integration(velocity,flux,individual_path[10:-4])
+print(FLUX_CALIBRATION)
+
+#plot_coordinates()
+run_for_individual("M31P95")
 #plot_all_graphs()
 integrate_all_graphs(True)
