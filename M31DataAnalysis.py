@@ -5,6 +5,7 @@ import math
 import numpy as np #Import numpy for maths calculations
 import matplotlib.pyplot as plt #Import pyplot for plotting the graph
 from scipy.integrate import simpson
+from scipy.interpolate import griddata
 
 MAX_DEGREE = 5
 S8_FLUX = 850 #K km/s
@@ -96,6 +97,7 @@ def calibrate_flux(path):
     flux_without_baseline = elevation_calibrated_flux - np.polyval(fit, velocity)
 
     area = simpson(flux_without_baseline, velocity)
+    #print(area)
     return S8_FLUX/area
 
 def get_average_milkyway(plot=False):
@@ -306,48 +308,162 @@ def plot_mass_contour(ra_coords,dec_coords,results,titles):
     plt.show()
 
 def plot_velocity_contour(ra_coords,dec_coords,results,titles):
-    plot_coordinates()
-    #plt.gca().invert_xaxis()
+    #Do subtract bulk motion (speed of centre, taken to be 0) and take absolute value
+    #Convert distance to centre into kpc not degrees
+    
+    #Random functions ----------------------------
+    
+    def grad(p1,p2):
+        x1,y1 = p1
+        x2,y2 = p2
+        return(y2-y1)/(x2-x1)
+
+    def angle(grad1,grad2):
+        return np.arctan((grad2-grad1)/(1+grad1*grad2))
+
+    def dist_from_centre(x1,y1):
+        #centre at 9.9,40.75
+        return np.sqrt((9.9-x1)**2+(40.75-y1)**2)
+    
+    def dist_from_point(x1,y1,x2,y2):
+        #centre at 9.9,40.75
+        return np.sqrt((x2-x1)**2+(y2-y1)**2)
+    
+    #Plot velocity contour ----------------------
+    #plot_coordinates()
+    plt.gca().invert_xaxis()
+    
     plt.ylabel('Declination [degrees]')
     plt.xlabel('Right Ascension [degrees]')
     plt.title("Velocity contour")
-
+    
+        
+    results_dict = {}
     z = np.zeros((9,12))
     for i,title in enumerate(titles):
         title_nums = title[4:]
         x_index = int(title_nums[-1])
         y_index = int(title_nums[:-1])-1
         z[x_index][y_index] =  results[i]
+        results_dict[title] = results[i]
 
     z = np.transpose(z)
     x = np.unique(ra_coords)
     y = np.unique(dec_coords)
     x = np.flip(x)
-    #levels=np.linspace(min(results),max(results),55)
-    levels = np.linspace(-800,200,20)
+    
+    M31_major_grad = grad(FILE_COORDS["M31P120"],FILE_COORDS["M31P18"])
+    M31_inc = 75.5 #borrowed value
+    M31_bulk_motion = results_dict["M31P64"]
+    M31_semi_major_axis_length = dist_from_point(*FILE_COORDS["M31P120"],*FILE_COORDS["M31P18"])
+    print("M31 Major Axis Gradient: ", M31_major_grad)
+    print("M31 Tilt: ", np.rad2deg(np.arctan(M31_major_grad)))
+    print("M31 Semi-Major Axis (degrees): ",M31_semi_major_axis_length)
+    print("M31 Bulk motion (centre speed): ", results_dict["M31P64"])
+    #NOTE - M31 bulk motion should be -297 ish not -381
+    #0.0038 kpc/arcsec based on Average NED-D Metric Distance of (0.784 +/- 0.120) Mpc.
+    deg_to_kpc = 3600*0.0038*np.sin(np.deg2rad(M31_inc))
+    M31_major_axis = M31_major_grad*x+(np.min(y)-2*(np.max(y)-np.min(y)))
+    M31_minor_axis = -M31_major_grad*x+(np.max(y)+2*(np.max(y)-np.min(y)))
+    plt.plot(x,M31_major_axis,"r-")
+    plt.plot(x,M31_minor_axis,"b-")
+    
+    levels=np.linspace(min(results),max(results),30)
+    #levels = np.linspace(-800,200,20)
     X,Y = np.meshgrid(x,y) # 12 x 9
-    plt.contourf(X,Y,z,levels=levels)
+    plt.contour(X,Y,z,levels=levels)
     plt.colorbar()
+    plt.gca().set_aspect('equal')
+
     plt.show()
     
-    #look at griddata to interpolate
-    #https://docs.astropy.org/en/stable/convolution/index.html
+    
+    #Simple diagonal method for velocity graph -----------------------------
+    diagonal_titles = [120,111,92,83,74,65,56,47,38]
+    speed_vals = np.array([])
+    pos_vals = np.array([])
+    for t in diagonal_titles:
+        point_speed = results_dict["M31P"+str(t)]
+        point_grad = grad([9.9,40.75],FILE_COORDS["M31P"+str(t)] )
+        semi_major_angle = angle(M31_major_grad,point_grad )
+        actual_speed = point_speed/(np.sin(np.deg2rad(M31_inc))*np.cos(np.deg2rad(semi_major_angle)))
+        speed_vals = np.append(speed_vals, actual_speed)
+        pos_vals = np.append(pos_vals, dist_from_centre(*FILE_COORDS["M31P"+str(t)]))
+        #print(FILE_COORDS["M31P"+str(t)])
+        #print(dist_from_centre(*FILE_COORDS["M31P"+str(t)]))
+    
+    plt.plot(pos_vals*deg_to_kpc,np.abs(speed_vals-M31_bulk_motion),"rx")
+    plt.title("Velocity curve (method 1 pls work)")
+    plt.xlabel("Distance from M31 centre (kpc)")
+    plt.ylabel("Velocity (km/s)")
+    plt.show()
+    
+    
+    
+    #Oliver's method for velocity graph --------------------
     x_index = np.linspace(1,7,100)
     y_index = (-12/9)*x_index+12
+    speed_vals = np.array([])
+    pos_vals = np.array([])
+    
+
+        
+    for i in range(x_index.size):
+        x = int(x_index[i])
+        y = int(y_index[i])
+        #Think this might be adding zeroes somehow
+        point_speed = (z[y,x]+z[y+1,x+1]+z[y,x+1]+z[y+1,x])/4
+        title = "M31P"+ str(y+1)+str(x)
+        point_grad = grad([9.9,40.75],FILE_COORDS[title] )
+        semi_major_angle = angle(M31_major_grad,point_grad )
+        actual_speed = point_speed/(np.sin(np.deg2rad(M31_inc))*np.cos(np.deg2rad(semi_major_angle)))
+        speed_vals = np.append(speed_vals, actual_speed)
+        #speed_vals = np.append(speed_vals, point_speed)
+        #pos_vals = np.append(pos_vals, np.sqrt((12-X[y,x])**2+(39-Y[y,x])**2))
+        pos_vals = np.append(pos_vals, dist_from_centre(X[y,x],Y[y,x]))
+
+    #plt.plot(pos_vals,speed_vals*-1,"rx")
+    plt.plot(pos_vals*deg_to_kpc,np.abs(speed_vals-M31_bulk_motion),"rx")
+    #plt.plot(x_index,y_index)
+    #print(speed_vals)
+    #print(pos_vals)
+    plt.title("Velocity curve (method 2 pls work)")
+    plt.xlabel("Distance from M31 centre (kpc)")
+    plt.ylabel("Velocity (km/s)")
+    plt.show()
+
+    """
+    #Interpolate method for contours ---------------------------------------
+    inter_grid = griddata((ra_coords,dec_coords), results, (X,Y), method='cubic')
+    plt.gca().invert_xaxis()
+    plt.ylabel('Declination [degrees]')
+    plt.xlabel('Right Ascension [degrees]')
+    plt.title("Velocity contour")
+    levels = np.linspace(-800,200,20)
+    plt.contour(X,Y,inter_grid,levels=levels)
+    plt.colorbar()
+    plt.show()
+    #print(inter_grid)
+    #print(np.diag(inter_grid))
     speed_vals = np.array([])
     pos_vals = np.array([])
     for i in range(x_index.size):
         x = int(x_index[i])
         y = int(y_index[i])
-        print("x:" , x)
-        print("y:" , y)
-        speed_vals = np.append(speed_vals, (z[y,x]+z[y+1,x+1]+z[y,x+1]+z[y+1,x])/4)
-        pos_vals = np.append(pos_vals, np.sqrt((12-X[y,x])**2+(39-Y[y,x])**2))
-    plt.plot(x_index,speed_vals*-1,"rx")
+        #Think this might be adding zeroes somehow
+        point_speed = inter_grid[y,x] #(inter_grid[y,x]+inter_grid[y+1,x+1]+inter_grid[y,x+1]+inter_grid[y+1,x])/4
+        speed_vals = np.append(speed_vals, point_speed)
+        pos_vals = np.append(pos_vals, dist_from_centre(X[y,x],Y[y,x]))#np.sqrt((12-X[y,x])**2+(39-Y[y,x])**2))
+
+    plt.plot(x_index,np.abs(speed_vals-M31_bulk_motion),"rx")
+    #plt.plot(x_index,y_index)
     #print(speed_vals)
     #print(pos_vals)
     plt.show()
-        
+    
+    """
+ 
+    
 
 #MAIN FUNCTIONS ------------------------------------------------------------
 
@@ -449,8 +565,8 @@ def integrate_all_graphs(plot=False):
             titles.append(title)
             velocity, flux = calibrate(entry.path,rtn=True)
             area, mass_density,zeroth_moment, first_moment = integrate(velocity,flux,title,rtn=True)
-            if mass_density<0:
-                print(title, mass_density)
+            #if mass_density<0:
+            #    print(title, mass_density)
             total_mass += get_neutral_H_mass(mass_density, title)
             areas.append(area)
             mass_densities.append(mass_density)
@@ -459,7 +575,7 @@ def integrate_all_graphs(plot=False):
             ra_coords.append(FILE_COORDS[title][0])
             dec_coords.append(FILE_COORDS[title][1])
 
-    
+
     if False:
         radius_kpc = (3.37e-3)/2 *M31DIST
         scan_area = np.pi*radius_kpc**2
@@ -492,11 +608,11 @@ def run_for_individual(title):
     print(title)
     print("Area:  {0:3.2f} \n Mass: {1:3.2f} \n First Moment: {2:3.2f}".format(area, mass,first_moment))
 FLUX_CALIBRATION = calibrate_flux("M31Backup\\S8A.TXT")
+#print(FLUX_CALIBRATION)
 FILE_COORDS = match_coords()
 AVG_MILKY_WAY = get_average_milkyway()
-print(FLUX_CALIBRATION)
 
 #plot_coordinates()
-run_for_individual("M31P95")
+#run_for_individual("M31P95")
 #plot_all_graphs()
 integrate_all_graphs(True)
