@@ -340,14 +340,31 @@ def oliver_contour(X,Y,z):
     DEC_diff = np.deg2rad(np.diff(DEC_vals))
 
     #distance of andromeda
-    R = 752 #kpc
+    R = 752
+
+    # RA_rel = X - center_RA
+    # DEC_rel = Y - center_DEC
+
+    # position_vec_DEC = R*np.deg2rad(DEC_rel)
+    # position_vec_RA = R*np.sin(-np.deg2rad(Y)+np.pi/2)*np.deg2rad(RA_rel)
+
+    # position_vec = np.dstack((position_vec_RA, position_vec_DEC))
+
+    # rotation_matrix = np.array([[np.cos(-alpha), -np.sin(-alpha)],
+    #                             [np.sin(-alpha), np.cos(-alpha)]])
+
+    # theta = np.empty((position_vec.shape[0], position_vec.shape[1]))
+
+    # for i in range(position_vec.shape[0]):
+    #     for j in range(position_vec.shape[1]):
+    #         position_vec[i,j,:] = np.matmul(rotation_matrix, position_vec[i,j,:])
+    #         theta[i,j] = np.arctan2(position_vec[i,j,1],position_vec[i,j,0])
+    #         theta[i,j] += np.pi
 
     #This for loop does a line inetgral across the galaxy to work out the position
     #Of the different points in kPc
     for i in range(RA_diff.size):
         delta_r = R*np.sqrt(DEC_diff[i]**2 + np.sin(-np.deg2rad(DEC_vals[i+1])+np.pi/2)**2*RA_diff[i]**2)
-        #print(delta_r)
-        #print(pos_vals)
         pos_vals[i+1]= pos_vals[i]+delta_r
 
     #This is the datapoint at which i flip the data, this could use tweaking.w
@@ -363,10 +380,10 @@ def oliver_contour(X,Y,z):
     upper_index = np.where(pos_vals>=flip_rad)
     lower_index = np.where(pos_vals<flip_rad)
 
-    pos_vals[upper_index] -= flip_rad 
-    speed_vals[upper_index] -= flip_speed 
+    pos_vals[upper_index] -= flip_rad
+    speed_vals[upper_index] -= flip_speed
 
-    pos_vals[lower_index] = -pos_vals[lower_index] + flip_rad 
+    pos_vals[lower_index] = -pos_vals[lower_index] + flip_rad
     speed_vals[lower_index] = -speed_vals[lower_index] + flip_speed
 
     #Plot rotation curve
@@ -375,14 +392,49 @@ def oliver_contour(X,Y,z):
     plt.ylabel("sampled values (km/s)")
     plt.xlabel("Distance from center (kPc)")
     plt.show()
+
+# def get_all_r_thetas(ra_coords, dec_coords,M31_centre,M31_tilt):
+
+#     centre_RA, centre_DEC = M31_centre
+#     RA_rel = ra_coords - centre_RA
+#     DEC_rel = dec_coords - centre_DEC
+
+#     position_vec_DEC = M31DIST*np.deg2rad(DEC_rel)
+#     position_vec_RA = M31DIST*np.sin(-np.deg2rad(centre_DEC)+np.pi/2)*np.deg2rad(RA_rel)
+
+#     position_vec = np.dstack((position_vec_RA, position_vec_DEC))
+
+#     rotation_matrix = np.array([[np.cos(-M31_tilt), -np.sin(-M31_tilt)],
+#                             [np.sin(-M31_tilt), np.cos(-M31_tilt)]])
+
+#     theta = np.empty((position_vec.shape[0], position_vec.shape[1]))
+
+#     for i in range(position_vec.shape[0]):
+#         for j in range(position_vec.shape[1]):
+#             position_vec[i,j,:] = np.matmul(rotation_matrix, position_vec[i,j,:])
+#             theta[i,j] = np.arctan2(position_vec[i,j,1],position_vec[i,j,0])
+#             theta[i,j] += np.pi
+#     return position_vec, theta
+
+def get_error_on_mean_speed(flux, velocity):
+    flux[flux<0] = 0
+    I1 = np.sum(flux*velocity)
+    I2 = np.sum(flux)
+    I3 = np.sum(flux*velocity**2)
     
-def plot_velocity_contour(ra_coords,dec_coords,results,titles):
+    variance = I3/I2 - (I1/I2)**2
+    #print(variance)
+    error = np.sqrt(variance)
+    #print(error)
+    return error
+
+def plot_velocity_contour(ra_coords,dec_coords,results,results_errors, titles):
     #Do subtract bulk motion (speed of centre, taken to be 0) and take absolute value
     #Convert distance to centre into kpc not degrees
-    
+
     M31_centre = (9.9,40.75)
     #Random functions ----------------------------
-    
+
     def grad(p1,p2):
         x1,y1 = p1
         x2,y2 = p2
@@ -397,55 +449,132 @@ def plot_velocity_contour(ra_coords,dec_coords,results,titles):
         xc,yc = M31_centre
         ang_dist = np.sqrt((xc-x1)**2+(yc-y1)**2) #in degrees
         return M31DIST*np.deg2rad(ang_dist)
-    
+
     def dist_from_point(x1,y1,x2,y2):
         #centre at 9.9,40.75
         return np.sqrt((x2-x1)**2+(y2-y1)**2)
-    
+
     M31_major_grad = grad(FILE_COORDS["M31P120"],FILE_COORDS["M31P18"])
     M31_bulk_motion = -297 #results_dict["M31P64"]
     M31_semi_major_axis_length = dist_from_point(*FILE_COORDS["M31P120"],*FILE_COORDS["M31P18"])
     M31_semi_minor_axis_length = dist_from_point(*FILE_COORDS["M31P86"],*FILE_COORDS["M31P53"])
     M31_inc = np.rad2deg(np.arccos(M31_semi_minor_axis_length/M31_semi_major_axis_length))
     M31_tilt = np.rad2deg(angle(0,M31_major_grad))
+    M31_tilt = np.rad2deg(0.833)  #FIX
     print("M31 Major Axis Gradient: ", M31_major_grad)
     print("M31 Semi-Major Axis (degrees): ",M31_semi_major_axis_length)
     print("M31 Semi-Major Axis (degrees): ",M31_semi_minor_axis_length)
     print("M31 Inclination: ", M31_inc)
     print("M31 Semi-major axis tilt: ", M31_tilt)
     print("M31 Bulk motion (centre speed): ", M31_bulk_motion)
-    
-    #Plot velocity contour ----------------------
-    #plot_coordinates()
-    plt.gca().invert_xaxis()
-    
-    plt.ylabel('Declination [degrees]')
-    plt.xlabel('Right Ascension [degrees]')
-    plt.title("Velocity contour")
-    
-    def get_r_theta(r_coord, dec_coord):
+    M31_tilt = np.rad2deg(0.833)
+
+    def get_x_y(r_coord, dec_coord):
         #Convert from degrees to kpc coordinate system
         #centred at (centre ra, centre dec)
-        x_kpc_radec = M31DIST*np.deg2rad(r_coord-M31_centre[0]) 
+        x_kpc_radec = M31DIST*np.deg2rad(r_coord-M31_centre[0])
         y_kpc_radec = M31DIST*np.deg2rad(dec_coord-M31_centre[1])
-        
+
         #Convert from ra dec axis to major/minor axis
-        x_kpc_semis = x_kpc_radec/np.cos(np.deg2rad(M31_tilt)) 
-        y_kpc_semis = y_kpc_radec/np.sin(np.deg2rad(M31_tilt))
-        
+        theta = -np.deg2rad(M31_tilt) #might neeed to be 90- or 360-
+        x_kpc_semis = x_kpc_radec*np.cos(theta) -y_kpc_radec*np.sin(theta)
+        y_kpc_semis = x_kpc_radec*np.cos(theta) +y_kpc_radec*np.sin(theta)
+
         #Convert from observed distances to actual distances
         #taking into account inclination
         x_plane = x_kpc_semis
-        y_plane = y_kpc_semis/np.cos(np.deg2rad(M31_inc))
-        
+        y_plane = y_kpc_semis/np.sin(np.deg2rad(M31_inc))
+        return x_plane,y_plane
+
+    def get_r_theta(r_coord, dec_coord):
+        #Convert from degrees to kpc coordinate system
+        #centred at (centre ra, centre dec)
+        x_plane, y_plane = get_x_y(r_coord, dec_coord)
         dist_to_centre = np.sqrt(x_plane**2+y_plane**2)
-        angle_to_semi_major = np.rad2deg(np.arctan(y_plane/x_plane))
-        #Think i need to subtract angle from 90?
-        #This returns 8 to 118 kpc, and 34 to 83 degrees?
-        print(x_plane,y_plane)
+        angle_to_semi_major = np.abs(np.rad2deg(np.arctan(y_plane/x_plane)))
+        print(angle_to_semi_major)
         return dist_to_centre, angle_to_semi_major
-        
+
+    plot_deprojection = False
+    if plot_deprojection:
+        #PLot coordinates in ra, dec
+        x,y = ra_coords , dec_coords
+        fig, ax = plt.subplots()
+        ax.plot(x,y,"x")
+        ax.plot([min(x),max(x)],[min(y),max(y)],"r-")
+        for i,text in enumerate(titles):
+            ax.annotate(text[4:],(x[i],y[i]))
+        plt.xlabel("RA (degrees)")
+        plt.ylabel("DEC (degrees)")
+        plt.show()
+
+        #Plot coordinates in dx, dy
+        x,y = M31DIST*np.deg2rad(np.array(ra_coords)-M31_centre[0]) , M31DIST*np.deg2rad(np.array(dec_coords)-M31_centre[1])
+        fig, ax = plt.subplots()
+        ax.plot(x,y,"x")
+        ax.plot([min(x),max(x)],[min(y),max(y)],"r-")
+        for i,text in enumerate(titles):
+            ax.annotate(text[4:],(x[i],y[i]))
+        plt.xlabel("X Distance from centre (kpc)")
+        plt.ylabel("Y Distance from centre (kpc)")
+        plt.show()
+
+        #Plot deprojected coordinates
+        x,y = get_x_y(np.array(ra_coords), np.array(dec_coords))
+        fig, ax = plt.subplots()
+        ax.plot(x,y,"x")
+        ax.plot([min(x),max(x)],[0,0],"r-")
+        for i,text in enumerate(titles):
+            ax.annotate(text[4:],(x[i],y[i]))
+        plt.xlabel("X Distance from semi-minor axis (kpc)")
+        plt.ylabel("Y Distance from semi-major axis (kpc)")
+        plt.show()
+
+        #Plot deprojected angles
+        x,y = get_x_y(np.array(ra_coords), np.array(dec_coords))
+        fig, ax = plt.subplots()
+        ax.plot(x,y,"x")
+        ax.plot([min(x),max(x)],[0,0],"r-")
+        for i,text in enumerate(titles):
+            ax.annotate(text[4:],(x[i],y[i]))
+            ax.plot([0,x[i]],[0,y[i]],"-")
+        plt.xlabel("X Distance from semi-major axis (kpc)")
+        plt.ylabel("Y Distance from semi-minor axis (kpc)")
+        plt.show()
+
+        #Plot radii and distances
+        rs,thetas = get_r_theta(np.array(ra_coords), np.array(dec_coords))
+        fig, ax = plt.subplots()
+        ax.plot(rs,thetas,"x")
+        #ax.plot([0,max(x)],[0,0])
+        for i,text in enumerate(titles):
+            ax.annotate(text[4:],(rs[i],thetas[i]))
+        plt.xlabel("Distance from centre (kpc)")
+        plt.ylabel("Angle from semi-major axis (degrees)")
+        plt.show()
+
+        #Plot cos radii and distances
+        rs,thetas = get_r_theta(np.array(ra_coords), np.array(dec_coords))
+        fig, ax = plt.subplots()
+        ax.plot(rs,np.cos(np.deg2rad(thetas)),"x")
+        #ax.plot([0,max(x)],[0,0])
+        for i,text in enumerate(titles):
+            ax.annotate(text[4:],(rs[i],np.cos(np.deg2rad(thetas[i]))))
+        plt.xlabel("Distance from centre (kpc)")
+        plt.ylabel("Cosine of Angle from semi-major axis")
+        plt.show()
+
+
+    #Plot velocity contour ----------------------
+    #plot_coordinates()
+    #plt.gca().invert_xaxis()
+
+    plt.ylabel('Declination [degrees]')
+    plt.xlabel('Right Ascension [degrees]')
+    plt.title("Velocity contour")
+
     results_dict = {}
+    errors_dict = {}
     z = np.zeros((9,12))
     for i,title in enumerate(titles):
         title_nums = title[4:]
@@ -453,76 +582,88 @@ def plot_velocity_contour(ra_coords,dec_coords,results,titles):
         y_index = int(title_nums[:-1])-1
         z[x_index][y_index] =  results[i]
         results_dict[title] = results[i]
+        errors_dict[title] = results_errors[i]
 
     z = np.transpose(z)
     x = np.unique(ra_coords)
     y = np.unique(dec_coords)
+    #x,y = get_x_y(x,y)
+    #x = M31DIST*np.deg2rad(x-M31_centre[0])
+    #y = M31DIST*np.deg2rad(y-M31_centre[1])
+
+    #x = x*np.cos(np.deg2rad(M31_tilt)) -y*np.sin(np.deg2rad(M31_tilt))
+    #y = x*np.cos(np.deg2rad(M31_tilt)) +y*np.sin(np.deg2rad(M31_tilt))
+
     x = np.flip(x)
-    
+
     #NOTE - M31 bulk motion should be -297 ish not -381
     M31_major_axis = M31_major_grad*x+(np.min(y)-2*(np.max(y)-np.min(y)))
     M31_minor_axis = -M31_major_grad*x+(np.max(y)+2*(np.max(y)-np.min(y)))
-    plt.plot(x,M31_major_axis,"r-")
-    plt.plot(x,M31_minor_axis,"b-")
-    
+    #plt.plot(x,M31_major_axis,"r-")
+    #plt.plot(x,M31_minor_axis,"b-")
+
     levels=np.linspace(min(results),max(results),30)
     #levels = np.linspace(-800,200,20)
     X,Y = np.meshgrid(x,y) # 12 x 9
     plt.contour(X,Y,z,levels=levels)
     plt.colorbar()
-    plt.gca().set_aspect('equal')
+    #plt.gca().set_aspect('equal')
     plt.show()
-    
-    
+
+
     #oliver_contour(X, Y, z)
-    
+
     #Simple diagonal method for velocity graph -----------------------------
     diagonal_titles = [120,111,92,83,74,65,56,47,28]
     speed_vals = np.array([])
+    speed_errors = np.array([])
     pos_vals = np.array([])
+    
     for t in diagonal_titles:
         r,semi_major_angle = get_r_theta(*FILE_COORDS["M31P"+str(t)])
         #print(r,semi_major_angle)
         point_speed = results_dict["M31P"+str(t)]
-        #point_grad = grad(M31_centre,FILE_COORDS["M31P"+str(t)] )
-        #semi_major_angle = np.abs(angle(M31_major_grad,point_grad ))
-        #print(semi_major_angle)
-        #print(np.sin(np.deg2rad(M31_inc)),np.cos(np.deg2rad(semi_major_angle)) )
+        
+        point_speed = np.abs(point_speed-M31_bulk_motion)
         actual_speed = point_speed/(np.sin(np.deg2rad(M31_inc))*np.cos(np.deg2rad(semi_major_angle)))
+        point_error = errors_dict["M31P"+str(t)]
+        actual_error =(point_error/point_speed)*actual_speed
         speed_vals = np.append(speed_vals, actual_speed)
-        #speed_vals = np.append(speed_vals, point_speed)
-        #pos = dist_from_centre(*FILE_COORDS["M31P"+str(t)])
+        speed_errors = np.append(speed_errors, actual_error)
         pos_vals = np.append(pos_vals, r)
-    
-    plt.plot(pos_vals[:5],np.abs(speed_vals-M31_bulk_motion)[:5],"rx")
-    plt.plot(pos_vals[5:],np.abs(speed_vals-M31_bulk_motion)[5:],"bx")
+
+    plt.errorbar(pos_vals[:5],speed_vals[:5],yerr=speed_errors[:5],fmt="rx")
+    plt.errorbar(pos_vals[5:],speed_vals[5:],yerr=speed_errors[5:],fmt="bx")
     plt.legend(["Upper Left Quadrant", "Lower Right Quadrant"])
     plt.title("Velocity curve (method 1, taking diagonals)")
     plt.xlabel("Distance from M31 centre (kpc)")
     plt.ylabel("Velocity (km/s)")
     plt.show()
-        
+
     #My method for velocity graph --------------------
     speed_vals = np.array([])
     pos_vals = np.array([])
-    
-   
+    speed_errors = np.array([])
+
     for i,title in enumerate(titles):
         title_nums = title[4:]
         x = int(title_nums[-1])
         y = int(title_nums[:-1])-1
-        point_speed = results[i] #(z[y,x]+z[y+1,x+1]+z[y,x+1]+z[y+1,x])/4
-        #title = "M31P"+ str(y+1)+str(x+1)
-        point_grad = grad(M31_centre,FILE_COORDS[title] )
-        semi_major_angle = angle(M31_major_grad,point_grad ) # in rads
+
+        r,semi_major_angle = get_r_theta(*FILE_COORDS[title])
+        point_speed = results_dict[title]
+        point_speed = np.abs(point_speed-M31_bulk_motion)
         actual_speed = point_speed/(np.sin(np.deg2rad(M31_inc))*np.cos(np.deg2rad(semi_major_angle)))
         speed_vals = np.append(speed_vals, actual_speed)
-        #speed_vals = np.append(speed_vals, point_speed)
-        #pos_vals = np.append(pos_vals, np.sqrt((12-X[y,x])**2+(39-Y[y,x])**2))
-        #pos_vals = np.append(pos_vals, dist_from_centre(X[y,x],Y[y,x]))
-        pos_vals = np.append(pos_vals, dist_from_centre(*FILE_COORDS[title]))
+        
+        point_error = errors_dict["M31P"+str(t)]
+        actual_error =(point_error/point_speed)*actual_speed
+        speed_errors = np.append(speed_errors, actual_error)
+        
+        pos_vals = np.append(pos_vals, r)
+
     #plt.plot(pos_vals,speed_vals*-1,"rx")
-    plt.plot(pos_vals,np.abs(speed_vals-M31_bulk_motion),"rx")
+    plt.errorbar(pos_vals[speed_vals<500],speed_vals[speed_vals<500],yerr=speed_errors[speed_vals<500],fmt="rx")
     #plt.plot(x_index,y_index)
     #print(speed_vals)
     #print(pos_vals)
@@ -530,8 +671,8 @@ def plot_velocity_contour(ra_coords,dec_coords,results,titles):
     plt.xlabel("Distance from M31 centre (kpc)")
     plt.ylabel("Velocity (km/s)")
     plt.show()
-    
-    
+
+
     """
     #Interpolate method for contours ---------------------------------------
     inter_grid = griddata((ra_coords,dec_coords), results, (X,Y), method='cubic')
@@ -645,8 +786,10 @@ def integrate(velocity,flux,title,rtn=False,plot=False):
     mass_density = get_neutral_H_mass_density(local_corrected_flux, local_corrected_velocity)
     #local_corrected_flux[local_corrected_flux<0] = 0 #BODGE
     first_moment = np.sum(local_corrected_velocity*local_corrected_flux)/np.sum(local_corrected_flux)
+    first_moment_error = get_error_on_mean_speed(local_corrected_flux, local_corrected_velocity)
+    #print(first_moment, first_moment_error)
     if rtn:
-        return area, mass_density, zeroth_moment, first_moment
+        return area, mass_density, zeroth_moment, first_moment, first_moment_error
 
 
 #BATCH PROCESS DATA ----------------------------------------------------------
@@ -664,19 +807,21 @@ def integrate_all_graphs(plot=False):
     mass_densities = []
     zeroth_moments = []
     first_moments = []
+    first_moment_errors = []
     total_mass = 0
     for entry in os.scandir("M31Backup\\"):
         title = entry.path[10:-4]
         if title.startswith("M"):
             titles.append(title)
             velocity, flux = calibrate(entry.path,rtn=True)
-            area, mass_density,zeroth_moment, first_moment = integrate(velocity,flux,title,rtn=True)
+            area, mass_density,zeroth_moment, first_moment, first_moment_error = integrate(velocity,flux,title,rtn=True)
             #if mass_density<0:
             #    print(title, mass_density)
             total_mass += get_neutral_H_mass(mass_density, title)
             areas.append(area)
             mass_densities.append(mass_density)
             first_moments.append(first_moment)
+            first_moment_errors.append(first_moment_error)
             zeroth_moments.append(zeroth_moment)
             ra_coords.append(FILE_COORDS[title][0])
             dec_coords.append(FILE_COORDS[title][1])
@@ -705,14 +850,15 @@ def integrate_all_graphs(plot=False):
 
     if plot:
         #plot_contour(ra_coords,dec_coords,areas,titles,"Flux")
-        plot_mass_contour(ra_coords,dec_coords,mass_densities,titles)
-        plot_velocity_contour(ra_coords,dec_coords,first_moments,titles)
+        #plot_mass_contour(ra_coords,dec_coords,mass_densities,titles)
+        plot_velocity_contour(ra_coords,dec_coords,first_moments,first_moment_errors,titles)
 
 def run_for_individual(title):
     velocity,flux = calibrate("M31Backup\\"+title+".TXT",rtn=True,plot=True)
     area, mass,zeroth_moment,first_moment = integrate(velocity,flux,title,rtn=True,plot=True)
     print(title)
     print("Area:  {0:3.2f} \n Mass: {1:3.2f} \n First Moment: {2:3.2f}".format(area, mass,first_moment))
+
 FLUX_CALIBRATION = calibrate_flux("M31Backup\\S8A.TXT")
 #print(FLUX_CALIBRATION)
 FILE_COORDS = match_coords()
