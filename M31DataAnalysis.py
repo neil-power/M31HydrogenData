@@ -393,35 +393,12 @@ def oliver_contour(X,Y,z):
     plt.xlabel("Distance from center (kPc)")
     plt.show()
 
-# def get_all_r_thetas(ra_coords, dec_coords,M31_centre,M31_tilt):
-
-#     centre_RA, centre_DEC = M31_centre
-#     RA_rel = ra_coords - centre_RA
-#     DEC_rel = dec_coords - centre_DEC
-
-#     position_vec_DEC = M31DIST*np.deg2rad(DEC_rel)
-#     position_vec_RA = M31DIST*np.sin(-np.deg2rad(centre_DEC)+np.pi/2)*np.deg2rad(RA_rel)
-
-#     position_vec = np.dstack((position_vec_RA, position_vec_DEC))
-
-#     rotation_matrix = np.array([[np.cos(-M31_tilt), -np.sin(-M31_tilt)],
-#                             [np.sin(-M31_tilt), np.cos(-M31_tilt)]])
-
-#     theta = np.empty((position_vec.shape[0], position_vec.shape[1]))
-
-#     for i in range(position_vec.shape[0]):
-#         for j in range(position_vec.shape[1]):
-#             position_vec[i,j,:] = np.matmul(rotation_matrix, position_vec[i,j,:])
-#             theta[i,j] = np.arctan2(position_vec[i,j,1],position_vec[i,j,0])
-#             theta[i,j] += np.pi
-#     return position_vec, theta
-
 def get_error_on_mean_speed(flux, velocity):
     flux[flux<0] = 0
     I1 = np.sum(flux*velocity)
     I2 = np.sum(flux)
     I3 = np.sum(flux*velocity**2)
-    
+
     variance = I3/I2 - (I1/I2)**2
     #print(variance)
     error = np.sqrt(variance)
@@ -492,7 +469,7 @@ def plot_velocity_contour(ra_coords,dec_coords,results,results_errors, titles):
         x_plane, y_plane = get_x_y(r_coord, dec_coord)
         dist_to_centre = np.sqrt(x_plane**2+y_plane**2)
         angle_to_semi_major = np.abs(np.rad2deg(np.arctan(y_plane/x_plane)))
-        print(angle_to_semi_major)
+        #print(angle_to_semi_major)
         return dist_to_centre, angle_to_semi_major
 
     plot_deprojection = False
@@ -618,12 +595,12 @@ def plot_velocity_contour(ra_coords,dec_coords,results,results_errors, titles):
     speed_vals = np.array([])
     speed_errors = np.array([])
     pos_vals = np.array([])
-    
+
     for t in diagonal_titles:
         r,semi_major_angle = get_r_theta(*FILE_COORDS["M31P"+str(t)])
         #print(r,semi_major_angle)
         point_speed = results_dict["M31P"+str(t)]
-        
+
         point_speed = np.abs(point_speed-M31_bulk_motion)
         actual_speed = point_speed/(np.sin(np.deg2rad(M31_inc))*np.cos(np.deg2rad(semi_major_angle)))
         point_error = errors_dict["M31P"+str(t)]
@@ -655,11 +632,11 @@ def plot_velocity_contour(ra_coords,dec_coords,results,results_errors, titles):
         point_speed = np.abs(point_speed-M31_bulk_motion)
         actual_speed = point_speed/(np.sin(np.deg2rad(M31_inc))*np.cos(np.deg2rad(semi_major_angle)))
         speed_vals = np.append(speed_vals, actual_speed)
-        
+
         point_error = errors_dict["M31P"+str(t)]
         actual_error =(point_error/point_speed)*actual_speed
         speed_errors = np.append(speed_errors, actual_error)
-        
+
         pos_vals = np.append(pos_vals, r)
 
     #plt.plot(pos_vals,speed_vals*-1,"rx")
@@ -672,44 +649,6 @@ def plot_velocity_contour(ra_coords,dec_coords,results,results_errors, titles):
     plt.ylabel("Velocity (km/s)")
     plt.show()
 
-
-    """
-    #Interpolate method for contours ---------------------------------------
-    inter_grid = griddata((ra_coords,dec_coords), results, (X,Y), method='cubic')
-    plt.gca().invert_xaxis()
-    plt.ylabel('Declination [degrees]')
-    plt.xlabel('Right Ascension [degrees]')
-    plt.title("Velocity contour")
-    levels=np.linspace(min(results),max(results),30)
-    plt.contour(X,Y,inter_grid,levels=levels)
-    plt.colorbar()
-    plt.show()
-    #print(inter_grid)
-    #print(np.diag(inter_grid))
-    speed_vals = np.array([])
-    pos_vals = np.array([])
-    for i,title in enumerate(titles):
-      title_nums = title[4:]
-      x = int(title_nums[-1])
-      y = int(title_nums[:-1])-1
-      point_speed = z[y,x] #(z[y,x]+z[y+1,x+1]+z[y,x+1]+z[y+1,x])/4
-      #title = "M31P"+ str(y+1)+str(x+1)
-      point_grad = grad([9.9,40.75],FILE_COORDS[title] )
-      semi_major_angle = angle(M31_major_grad,point_grad )
-      actual_speed = point_speed/(np.sin(np.deg2rad(M31_inc))*np.cos(np.deg2rad(semi_major_angle)))
-      speed_vals = np.append(speed_vals, actual_speed)
-      #speed_vals = np.append(speed_vals, point_speed)
-      #pos_vals = np.append(pos_vals, np.sqrt((12-X[y,x])**2+(39-Y[y,x])**2))
-      #pos_vals = np.append(pos_vals, dist_from_centre(X[y,x],Y[y,x]))
-      pos_vals = np.append(pos_vals, dist_from_centre(*FILE_COORDS[title]))
-
-    #plt.plot(pos_vals,speed_vals*-1,"rx")
-    plt.plot(pos_vals*deg_to_kpc,np.abs(speed_vals-M31_bulk_motion),"rx")
-    plt.title("Velocity curve (method 4, looking at every point interpolation)")
-    plt.xlabel("Distance from M31 centre (kpc)")
-    plt.ylabel("Velocity (km/s)")
-    plt.show()
-    """
 
 
 #MAIN FUNCTIONS ------------------------------------------------------------
@@ -826,8 +765,8 @@ def integrate_all_graphs(plot=False):
             ra_coords.append(FILE_COORDS[title][0])
             dec_coords.append(FILE_COORDS[title][1])
 
-
-    if False:
+    display_mass = True
+    if display_mass:
         radius_kpc = (3.37e-3)/2 *M31DIST
         scan_area = np.pi*radius_kpc**2
         total_scan_area = np.pi*radius_kpc**2*len(titles)
