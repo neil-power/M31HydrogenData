@@ -204,6 +204,20 @@ def get_neutral_H_mass_density(flux,velocity):
     mass_sol = 14604*integral
     return mass_sol
 
+def get_mass_error_from_baseline(velocity,flux,min_bound,max_bound):
+
+    I2 = 14604*(velocity[1]-velocity[0])*np.sum(flux[30:min_bound])
+    #plt.plot(velocity[30:min_bound],flux[30:min_bound])
+
+    if max_bound<380:
+        I2 += 14604*(velocity[1]-velocity[0])*np.sum(flux[max_bound:380])
+        #plt.plot(velocity[max_bound:380],flux[max_bound:380])
+        I1 = np.size(flux)/(min_bound+(380-max_bound))
+    else:
+        I1 =  np.size(flux)/(min_bound)
+
+    return np.abs(I2/I1)
+
 def get_neutral_H_mass(mass_density,title):
     dec = float(FILE_COORDS[title][1])
     area = np.deg2rad(0.5)*np.deg2rad(0.33)*np.cos(np.deg2rad(dec))*M31DIST**2
@@ -220,6 +234,8 @@ def get_M31_area_error(dec_coords):
     area_error_rel =  (M31DIST_UNC/M31DIST)
     area_error = area_error_rel*get_M31_area(dec_coords)
     return area_error
+
+
 
 #PLOTTING -------------------------------------------------------------------
 
@@ -319,6 +335,7 @@ def plot_mass_contour(ra_coords,dec_coords,results,titles):
     x = np.unique(ra_coords)
     y = np.unique(dec_coords)
     x = np.flip(x)
+    
     levels=np.linspace(min(results),max(results),15)
     X,Y = np.meshgrid(x,y) # 12 x 9
     #plt.xlim(max(x),8.4)
@@ -326,6 +343,10 @@ def plot_mass_contour(ra_coords,dec_coords,results,titles):
     plt.contourf(X,Y,z,levels=levels)
     plt.colorbar(label="")
     plt.show()
+    #plt.gca().invert_xaxis()
+    plt.ylabel('Declination [degrees]')
+    plt.xlabel('Right Ascension [degrees]')
+    plt.title("Neutral HI mass density contour")
 
 def get_error_on_mean_speed(flux, velocity):
     flux[flux<0] = 0
@@ -373,14 +394,44 @@ def plot_velocity_contour(ra_coords,dec_coords,results,results_errors, titles):
     #plt.gca().set_aspect('equal')
     plt.show()
 
-def plot_velocity_curve(pos_vals,speed_vals,speed_errors):
-    plt.errorbar(pos_vals,speed_vals,yerr=speed_errors,fmt="rx")
+def plot_velocity_curve(pos_vals,speed_vals,pos_errors,speed_errors):
+    plt.errorbar(pos_vals,speed_vals,yerr=speed_errors,xerr=pos_errors,fmt="rx")
     #plt.plot(pos_vals,speed_vals,"rx")
 
-    plt.title("Velocity curve (method 3, looking at every point)")
+    plt.title("Velocity curve")
     plt.xlabel("Distance from M31 centre (kpc)")
     plt.ylabel("Velocity (km/s)")
     #plt.ylim([0,500])
+    plt.show()
+
+def plot_mass_curve(radius_values, speed_values, radius_errors, speed_errors,H_mass,H_mass_error):
+    G = 6.6743e-11
+    M_sun = 1.989e30 #kg
+    Parsec = 3.0857e16 #m
+    pspeed_errors = speed_errors/speed_values
+    speed_values = speed_values*1e3 #To m/s from km/s
+    radius_values = radius_values*1e3*Parsec #to m from kpc
+    mass = (speed_values**2*radius_values)/G
+    mass_errors = 2*pspeed_errors*mass
+    radius_values /= Parsec*1e3
+    mass /= M_sun
+    mass_errors/= M_sun
+    plt.errorbar(radius_values,mass,yerr=mass_errors, xerr=radius_errors,fmt="bx")
+    fit = fit_equation(radius_values,mass,1)
+    plt.plot(radius_values,np.polyval(fit,radius_values),"r--")
+    plt.title("Mass curve")
+    plt.xlabel("Distance from M31 centre (kpc)")
+    plt.ylabel("Mass (solar masses)") 
+    max_dist = np.max(radius_values)
+    max_dist_error = radius_errors[np.argmax(radius_values)]
+    total_mass = np.polyval(fit,max_dist)
+    total_mass_error = (max_dist_error/max_dist)*total_mass
+    ratio = H_mass/total_mass*100
+    ratio_error = np.sqrt((H_mass_error/H_mass)**2+(total_mass_error/total_mass)**2)*ratio
+    print(f"The mass of M31 by rotational velocity at {max_dist:3.2f} ± {max_dist_error:3.2f} kpc is {total_mass:3.2e} ± {total_mass_error:3.2e} solar masses." )
+    print(f"This gives a neutral hydrogen by mass value of {ratio:3.2f} ± {ratio_error:3.2f} %")
+    
+    
     plt.show()
 
 def plot_deprojection(ra_coords , dec_coords, titles,M31_tilt,M31_inc):
@@ -476,34 +527,64 @@ def get_r_theta(r_coord, dec_coord,M31_tilt,M31_inc):
     #print(angle_to_semi_major)
     return dist_to_centre, angle_to_semi_major
 
+def get_inclination_error(a,b,da,db):
+    min_incl = np.rad2deg(np.arccos((a-da)/(b+db)))
+    max_incl = np.rad2deg(np.arccos((a+da)/(b-db)))
+    return np.abs(max_incl-min_incl)
+
+def get_tilt_error(dx):
+    min_grad = grad(np.array(FILE_COORDS["M31P120"])+dx,np.array(FILE_COORDS["M31P18"])-dx)
+    max_grad = grad(np.array(FILE_COORDS["M31P120"])-dx,np.array(FILE_COORDS["M31P18"])+dx)
+    min_tilt = np.rad2deg(angle(0,min_grad))
+    max_tilt = np.rad2deg(angle(0,max_grad))
+    return np.abs(max_tilt-min_tilt)
+    
+    
+def grad(p1,p2):
+    x1,y1 = p1
+    x2,y2 = p2
+    return(y2-y1)/(x2-x1)
+
+def angle(grad1,grad2):
+    return np.arctan((grad2-grad1)/(1+grad1*grad2))
+
+def get_actual_speed_error(actual_speed,point_speed,point_error):
+    rel_actual_error = np.sqrt((point_error/point_speed)**2+(0.0136)**2+(0.0186)**2)
+    #add theta, i errors
+    return rel_actual_error*actual_speed
+
+def get_r_error(x_obs,y_obs,M31_tilt,M31_tilt_error,M31_inc,M31_inc_error):
+    dx = (M31DIST_UNC/M31DIST)*x_obs
+    dy = (M31DIST_UNC/M31DIST)*y_obs
+    dtilt = M31_tilt_error
+    x_err = np.cos(M31_tilt)*dx +np.sin(M31_tilt)*dy + (x_obs*np.sin(M31_tilt)+y_obs*np.cos(M31_tilt))*dtilt
+    y_err = x_err
+    y_err = np.sqrt((y_err/y_obs)**2+(M31_inc_error/M31_inc)**2)
+    r_error = np.sqrt((x_err/x_obs)**2+(y_err/y_obs)**2)
+    return r_error
+    
 def velocity_contour(ra_coords,dec_coords,results,results_errors, titles,rtn=False):
     #Do subtract bulk motion (speed of centre, taken to be 0) and take absolute value
     #Convert distance to centre into kpc not degrees
 
-    #Random functions ----------------------------
-
-    def grad(p1,p2):
-        x1,y1 = p1
-        x2,y2 = p2
-        return(y2-y1)/(x2-x1)
-
-    def angle(grad1,grad2):
-        return np.arctan((grad2-grad1)/(1+grad1*grad2))
 
     M31_major_grad = grad(FILE_COORDS["M31P120"],FILE_COORDS["M31P18"])
-    M31_bulk_motion = -289 #results_dict["M31P74"]=289
+    M31_bulk_motion = -289
 
+    axis_uncertainty = 0.1 #degrees
     M31_semi_major_axis_length = dist_from_point(*FILE_COORDS["M31P120"],*FILE_COORDS["M31P18"])
     M31_semi_minor_axis_length = dist_from_point(*FILE_COORDS["M31P86"],*FILE_COORDS["M31P53"])
     M31_inc = np.rad2deg(np.arccos(M31_semi_minor_axis_length/M31_semi_major_axis_length))
+    M31_inc_error = get_inclination_error(M31_semi_minor_axis_length,M31_semi_major_axis_length,axis_uncertainty,axis_uncertainty)
     M31_tilt = np.rad2deg(angle(0,M31_major_grad))
     M31_tilt = np.rad2deg(0.833)  #FIX (or not)
+    M31_tilt_error= get_tilt_error(axis_uncertainty)
     #print("M31 Major Axis Gradient: ", M31_major_grad)
-    print(f"M31 Semi-Major Axis (degrees): {M31_semi_major_axis_length:3.2f}")
-    print(f"M31 Semi-Minor Axis (degrees): {M31_semi_minor_axis_length:3.2f}")
-    print(f"M31 Inclination: {M31_inc:3.2f}")
-    print(f"M31 Semi-major axis tilt: {M31_tilt:3.2f}")
-    print(f"M31 Bulk motion (centre speed): {M31_bulk_motion:3.2f}")
+    print(f"M31 Semi-Major Axis: {M31_semi_major_axis_length:3.2f} ± {axis_uncertainty:3.2f} degrees")
+    print(f"M31 Semi-Minor Axis: {M31_semi_minor_axis_length:3.2f} ± {axis_uncertainty:3.2f} degrees")
+    print(f"M31 Inclination: {M31_inc:3.2f} ± {M31_inc_error:3.2f} degrees")
+    print(f"M31 Semi-major axis tilt: {M31_tilt:3.2f} ± {M31_tilt_error:3.2f} degrees")
+    print(f"M31 Bulk motion (centre speed): {M31_bulk_motion:3.2f} km/s")
 
     #Plot plot_deprojection graphs ----------------------
     #plot_deprojection(ra_coords, dec_coords, titles,M31_tilt,M31_inc)
@@ -524,83 +605,73 @@ def velocity_contour(ra_coords,dec_coords,results,results_errors, titles,rtn=Fal
     dspeed_vals = np.array([])
     dspeed_errors = np.array([])
     dpos_vals = np.array([])
+    dpos_errors = np.array([])
 
     for t in diagonal_titles:
         r,semi_major_angle = get_r_theta(*FILE_COORDS["M31P"+str(t)],M31_tilt,M31_inc)
-        #print(r,semi_major_angle)
+        r_err = get_r_error(*FILE_COORDS["M31P"+str(t)],M31_tilt,M31_tilt_error,M31_inc,M31_inc_error)
+        dpos_errors = np.append(dpos_errors,r_err)
         point_speed = results_dict["M31P"+str(t)]
 
         point_speed = np.abs(point_speed-M31_bulk_motion)
         actual_speed = point_speed/(np.sin(np.deg2rad(M31_inc))*np.cos(np.deg2rad(semi_major_angle)))
         point_error = errors_dict["M31P"+str(t)]
-        actual_error =(point_error/point_speed)*actual_speed
+        actual_error = get_actual_speed_error(actual_speed, point_speed, point_error)
         dspeed_vals = np.append(dspeed_vals, actual_speed)
         dspeed_errors = np.append(dspeed_errors, actual_error)
         dpos_vals = np.append(dpos_vals, r)
 
-    plot_velocity_curve(dpos_vals,dspeed_vals,dspeed_errors)
+    plot_velocity_curve(dpos_vals,dspeed_vals,dpos_errors,dspeed_errors)
 
     #My method for velocity graph --------------------
     speed_vals = np.array([])
     pos_vals = np.array([])
     speed_errors = np.array([])
-
+    pos_errors = np.array([])
     for title in titles:
         r,semi_major_angle = get_r_theta(*FILE_COORDS[title],M31_tilt,M31_inc)
+        r_err = get_r_error(*FILE_COORDS["M31P"+str(t)],M31_tilt,M31_tilt_error,M31_inc,M31_inc_error)
+        pos_errors = np.append(pos_errors,r_err)
         point_speed = results_dict[title]
         point_speed = np.abs(point_speed-M31_bulk_motion)
         actual_speed = point_speed/(np.sin(np.deg2rad(M31_inc))*np.cos(np.deg2rad(semi_major_angle)))
         speed_vals = np.append(speed_vals, actual_speed)
 
         point_error = errors_dict[title]
-        actual_error = (point_error/point_speed)*actual_speed
+        actual_error = get_actual_speed_error(actual_speed, point_speed, point_error)
         speed_errors = np.append(speed_errors, actual_error)
 
         pos_vals = np.append(pos_vals, r)
 
-    print(speed_vals.size)
+    #print(speed_vals.size)
     extreme_outlier_removal = np.where(speed_vals<1000)
     pos_vals = pos_vals[extreme_outlier_removal]
     speed_errors = speed_errors[extreme_outlier_removal]
+    pos_errors = pos_errors[extreme_outlier_removal]
     speed_vals = speed_vals[extreme_outlier_removal]
-    print(speed_vals.size)
+    #print(speed_vals.size)
 
-    extreme_error_removal = np.where(speed_errors<500)
+    extreme_error_removal = np.where(speed_errors<400)
     pos_vals = pos_vals[extreme_error_removal]
     speed_errors = speed_errors[extreme_error_removal]
+    pos_errors = pos_errors[extreme_error_removal]
     speed_vals = speed_vals[extreme_error_removal]
 
-    print(speed_vals.size)
-    fit = fit_equation(pos_vals,speed_vals, 4)
-    #plt.plot(pos_vals, np.polyval(fit,pos_vals),"b.")
-    poly_outlier_removal = np.where(np.abs(speed_vals-np.polyval(fit,pos_vals))<np.std(speed_vals))
-    pos_vals = pos_vals[poly_outlier_removal]
-    speed_errors = speed_errors[poly_outlier_removal]
-    speed_vals = speed_vals[poly_outlier_removal]
+    # print(speed_vals.size)
+    # fit = fit_equation(pos_vals,speed_vals, 4)
+    # #plt.plot(pos_vals, np.polyval(fit,pos_vals),"b.")
+    # poly_outlier_removal = np.where(np.abs(speed_vals-np.polyval(fit,pos_vals))<np.std(speed_vals))
+    # pos_vals = pos_vals[poly_outlier_removal]
+    # speed_errors = speed_errors[poly_outlier_removal]
+    # pos_errors = pos_errors[poly_outlier_removal]
+    # speed_vals = speed_vals[poly_outlier_removal]
 
-    print(speed_vals.size)
+    # print(speed_vals.size)
 
-    plot_velocity_curve(pos_vals,speed_vals,speed_errors)
-
+    plot_velocity_curve(pos_vals,speed_vals,pos_errors,speed_errors)
     if rtn:
-        return pos_vals, speed_vals, speed_errors
+        return pos_vals, speed_vals, pos_errors, speed_errors
 
-def plot_mass_curve(radius_values, speed_values, speed_errors):
-    G = 6.6743e-11
-    M_sun = 1.989e30 #kg
-    Parsec = 3.0857e16 #m
-    pspeed_errors = speed_errors/speed_values
-
-    speed_values = speed_values*1e3 #To m/s from km/s
-    radius_values = radius_values*1e3*Parsec #to m from kpc
-
-    mass = (speed_values**2*radius_values)/G
-    mass_errors = 2*pspeed_errors*mass
-    plt.errorbar(radius_values/Parsec*1e-3,mass/M_sun,yerr=mass_errors/M_sun, fmt="bx")
-    plt.title("Mass curve")
-    plt.xlabel("Distance from M31 centre (kpc)")
-    plt.ylabel("Mass (solar masses)")
-    plt.show()
 
 #MAIN FUNCTIONS ------------------------------------------------------------
 
@@ -646,20 +717,6 @@ def calibrate(path,rtn=False,plot=False):
 
     if rtn:
         return velocity,calibrated_flux
-
-def get_mass_error_from_baseline(velocity,flux,min_bound,max_bound):
-
-    I2 = 14604*(velocity[1]-velocity[0])*np.sum(flux[30:min_bound])
-    #plt.plot(velocity[30:min_bound],flux[30:min_bound])
-
-    if max_bound<380:
-        I2 += 14604*(velocity[1]-velocity[0])*np.sum(flux[max_bound:380])
-        #plt.plot(velocity[max_bound:380],flux[max_bound:380])
-        I1 = np.size(flux)/(min_bound+(380-max_bound))
-    else:
-        I1 =  np.size(flux)/(min_bound)
-
-    return np.abs(I2/I1)
 
 
 def integrate(velocity,flux,title,rtn=False,plot=False):
@@ -725,18 +782,21 @@ def integrate_all_graphs(plot=False):
         if title.startswith("M"):
             velocity, flux = calibrate(entry.path,rtn=True)
             area, mass_density,mass_density_error,zeroth_moment, first_moment, first_moment_error = integrate(velocity,flux,title,rtn=True)
-            total_mass += get_neutral_H_mass(mass_density, title)
-            total_mass_error += (mass_density_error[0]+mass_density_error[1])*area
-            areas.append(area)
-            titles.append(title)
-            mass_densities.append(mass_density)
-            baseline_mass_density_errors.append(mass_density_error[0])
-            local_mass_density_errors.append(mass_density_error[1])
-            first_moments.append(first_moment)
-            first_moment_errors.append(first_moment_error)
-            zeroth_moments.append(zeroth_moment)
-            ra_coords.append(FILE_COORDS[title][0])
-            dec_coords.append(FILE_COORDS[title][1])
+            if True:#mass_density>10000: #Only take positive mass densities
+                total_mass += get_neutral_H_mass(mass_density, title)
+                total_mass_error += (mass_density_error[0]+mass_density_error[1])*area
+                areas.append(area)
+                titles.append(title)
+                mass_densities.append(mass_density)
+                baseline_mass_density_errors.append(mass_density_error[0])
+                local_mass_density_errors.append(mass_density_error[1])
+                first_moments.append(first_moment)
+                first_moment_errors.append(first_moment_error)
+                zeroth_moments.append(zeroth_moment)
+                ra_coords.append(FILE_COORDS[title][0])
+                dec_coords.append(FILE_COORDS[title][1])
+            else:
+                print(title+"removed")
 
     display_mass = True
     if display_mass:
@@ -765,12 +825,12 @@ def integrate_all_graphs(plot=False):
         print("Baseline subtraction error: {0:3.2f}%".format(100*np.average(baseline_mass_density_errors)/avg_mass_density))
         print("Local hydrogen subtraction error: {0:3.2f}%".format(100*np.average(local_mass_density_errors)/avg_mass_density))
         print("M31 Area error: {0:3.2f}%".format(100*total_M31_area_error/total_M31_area))
-        print("The total mass, scaling each scan to a box, is {0:3.2e} ± {1:3.2e} solar masses".format(total_mass, total_mass_error))
+        #print("The total mass, scaling each scan to a box, is {0:3.2e} ± {1:3.2e} solar masses".format(total_mass, total_mass_error))
 
     if plot:
         plot_mass_contour(ra_coords,dec_coords,mass_densities,titles)
-        radius_values, speed_values, speed_errors = velocity_contour(ra_coords,dec_coords,first_moments,first_moment_errors,titles,rtn=True)
-        plot_mass_curve(radius_values, speed_values, speed_errors)
+        radius_values, speed_values,radius_errors, speed_errors = velocity_contour(ra_coords,dec_coords,first_moments,first_moment_errors,titles,rtn=True)
+        plot_mass_curve(radius_values, speed_values,radius_errors, speed_errors,mass_1,mass_1_error)
 
 def run_for_individual(title):
     velocity,flux = calibrate("M31Backup\\"+title+".TXT",rtn=True,plot=True)
