@@ -9,6 +9,7 @@ from scipy.integrate import simpson
 MAX_DEGREE = 5
 S8_FLUX = 850 #K km/s
 M31DIST = 752 #Kpc
+M31DIST_UNC = 27
 M31CENTRE = (9.9,40.75)
 PD = "b-"
 FD = "r-"
@@ -118,6 +119,16 @@ def get_average_milkyway(plot=False):
         plot_velocity_without_baseline_corrected(velocity, total_array,"Average Milky Way")
     return total_array
 
+def get_local_H_removal_error(velocity,flux,title):
+    #Give removed milky way
+    local_removal_error = 0
+    #print(int_params[title][2])
+    if int(int_params[title][2]) == 0: #If no overlap
+        local_removal_error += 14604*(velocity[1]-velocity[0])*np.sum(flux[370:380])
+        #plt.plot(velocity[370:400],flux[370:400])
+        #plt.show()
+    return np.abs(local_removal_error)
+
 #REMOVING PEAKS ------------------------------------------
 
 def remove_peaks(x,y,title):
@@ -181,8 +192,8 @@ def remove_local_hydrogen_by_average(velocity,flux):
 
 def get_neutral_H_mass_density(flux,velocity):
     frequency = velocity #*4.762e3
-    delta_f = np.average(np.diff(frequency))
-    integral = delta_f*np.sum(flux)
+    #delta_f = np.average(np.diff(frequency))
+    #integral = delta_f*np.sum(flux)
     integral = (frequency[1]-frequency[0])*np.sum(flux)
     # integral_s = simpson(flux,frequency)
     # mass_atoms_cm = 3.488e14*integral
@@ -204,6 +215,11 @@ def get_M31_area(dec_coords):
     for dec in dec_coords:
         area += np.deg2rad(0.5)*np.deg2rad(0.33)*np.cos(np.deg2rad(dec))*M31DIST**2
     return area
+
+def get_M31_area_error(dec_coords):
+    area_error_rel =  (M31DIST_UNC/M31DIST)
+    area_error = area_error_rel*get_M31_area(dec_coords)
+    return area_error
 
 #PLOTTING -------------------------------------------------------------------
 
@@ -310,7 +326,7 @@ def plot_mass_contour(ra_coords,dec_coords,results,titles):
     plt.contourf(X,Y,z,levels=levels)
     plt.colorbar(label="")
     plt.show()
-    
+
 def get_error_on_mean_speed(flux, velocity):
     flux[flux<0] = 0
     I1 = np.sum(flux*velocity)
@@ -631,6 +647,21 @@ def calibrate(path,rtn=False,plot=False):
     if rtn:
         return velocity,calibrated_flux
 
+def get_mass_error_from_baseline(velocity,flux,min_bound,max_bound):
+
+    I2 = 14604*(velocity[1]-velocity[0])*np.sum(flux[30:min_bound])
+    #plt.plot(velocity[30:min_bound],flux[30:min_bound])
+
+    if max_bound<380:
+        I2 += 14604*(velocity[1]-velocity[0])*np.sum(flux[max_bound:380])
+        #plt.plot(velocity[max_bound:380],flux[max_bound:380])
+        I1 = np.size(flux)/(min_bound+(380-max_bound))
+    else:
+        I1 =  np.size(flux)/(min_bound)
+
+    return np.abs(I2/I1)
+
+
 def integrate(velocity,flux,title,rtn=False,plot=False):
     #Remove mystery peak
     flux[338:342] = (flux[342] - flux[338]) * np.array([0,1,2,3]) / (velocity[342]-velocity[338]) + flux[338]
@@ -640,6 +671,9 @@ def integrate(velocity,flux,title,rtn=False,plot=False):
 
     #local_corrected_velocity, local_corrected_flux = remove_local_hydrogen(velocity, flux, title)
     local_corrected_velocity, local_corrected_flux = remove_local_hydrogen_by_average(velocity, flux)
+    local_removal_error = get_local_H_removal_error(local_corrected_velocity, local_corrected_flux, title)
+
+    baseline_error = get_mass_error_from_baseline(local_corrected_velocity, local_corrected_flux, min_bound, max_bound) #
 
     local_corrected_flux = local_corrected_flux[min_bound:max_bound]
     local_corrected_velocity = local_corrected_velocity[min_bound:max_bound]
@@ -655,13 +689,15 @@ def integrate(velocity,flux,title,rtn=False,plot=False):
         plt.show()
 
     area = simpson(local_corrected_flux, local_corrected_velocity)
+
     delta_v = np.average(np.diff(local_corrected_velocity))
     zeroth_moment = delta_v*np.sum(local_corrected_flux)
     mass_density = get_neutral_H_mass_density(local_corrected_flux, local_corrected_velocity)
+    mass_density_error = [np.abs(baseline_error), local_removal_error]
     first_moment = np.sum(local_corrected_velocity*local_corrected_flux)/np.sum(local_corrected_flux)
     first_moment_error = get_error_on_mean_speed(local_corrected_flux, local_corrected_velocity)
     if rtn:
-        return area, mass_density, zeroth_moment, first_moment, first_moment_error
+        return area, mass_density, mass_density_error, zeroth_moment, first_moment, first_moment_error
 
 
 #BATCH PROCESS DATA ----------------------------------------------------------
@@ -677,19 +713,25 @@ def integrate_all_graphs(plot=False):
     areas = []
     titles = []
     mass_densities = []
+    baseline_mass_density_errors = []
+    local_mass_density_errors  = []
     zeroth_moments = []
     first_moments = []
     first_moment_errors = []
     total_mass = 0
+    total_mass_error = 0
     for entry in os.scandir("M31Backup\\"):
         title = entry.path[10:-4]
         if title.startswith("M"):
-            titles.append(title)
             velocity, flux = calibrate(entry.path,rtn=True)
-            area, mass_density,zeroth_moment, first_moment, first_moment_error = integrate(velocity,flux,title,rtn=True)
+            area, mass_density,mass_density_error,zeroth_moment, first_moment, first_moment_error = integrate(velocity,flux,title,rtn=True)
             total_mass += get_neutral_H_mass(mass_density, title)
+            total_mass_error += (mass_density_error[0]+mass_density_error[1])*area
             areas.append(area)
+            titles.append(title)
             mass_densities.append(mass_density)
+            baseline_mass_density_errors.append(mass_density_error[0])
+            local_mass_density_errors.append(mass_density_error[1])
             first_moments.append(first_moment)
             first_moment_errors.append(first_moment_error)
             zeroth_moments.append(zeroth_moment)
@@ -700,20 +742,30 @@ def integrate_all_graphs(plot=False):
     if display_mass:
         radius_kpc = (3.37e-3)/2 *M31DIST
         scan_area = np.pi*radius_kpc**2
+        scan_area_error = scan_area*(M31DIST_UNC/M31DIST)
         total_scan_area = np.pi*radius_kpc**2*len(titles)
         total_M31_area = get_M31_area(dec_coords)
+        total_M31_area_error = get_M31_area_error(dec_coords)
         avg_zeroth_moment = np.average(zeroth_moments)
+
         avg_mass_density = np.average(mass_densities)
+        avg_mass_density_error = np.sqrt( (np.average(baseline_mass_density_errors)/avg_mass_density)**2 + (np.average(local_mass_density_errors)/avg_mass_density)**2+ (total_M31_area_error/total_M31_area)**2)*avg_mass_density
 
         mass_1 = avg_mass_density*total_M31_area
-        mass_2 = total_mass
-        print("Observed area for one scan is {0:3.2f} kpc^2".format(scan_area))
+        mass_1_error = avg_mass_density_error*total_M31_area
+
+        print("Observed area for one scan is {0:3.2f} ± {1:3.2f} kpc^2".format(scan_area, scan_area_error))
         print("Total observed area for all scans is {0:3.2e} kpc^2".format(total_scan_area))
-        print("Estimated M31 area by boxes is {0:3.2f} kpc^2".format(total_M31_area))
+        print("Estimated M31 area by boxes is {0:3.2f} ± {1:3.2f} kpc^2".format(total_M31_area,total_M31_area_error))
         print("The average zeroth moment is {0:3.2f} K km/s".format(avg_zeroth_moment))
         print("The average mass density is {0:3.2e} solar masses per kpc^2".format(avg_mass_density))
-        print("The total mass, using average mass density times area, is {0:3.2e} solar masses".format(mass_1))
-        print("The total mass, scaling each scan to a box, is {0:3.2e} solar masses".format(mass_2))
+
+        print("Neutral Hydrogen Mass")
+        print("The total mass, using average mass density times area, is {0:3.2e} ± {1:3.2e} solar masses".format(mass_1,mass_1_error))
+        print("Baseline subtraction error: {0:3.2f}%".format(100*np.average(baseline_mass_density_errors)/avg_mass_density))
+        print("Local hydrogen subtraction error: {0:3.2f}%".format(100*np.average(local_mass_density_errors)/avg_mass_density))
+        print("M31 Area error: {0:3.2f}%".format(100*total_M31_area_error/total_M31_area))
+        print("The total mass, scaling each scan to a box, is {0:3.2e} ± {1:3.2e} solar masses".format(total_mass, total_mass_error))
 
     if plot:
         plot_mass_contour(ra_coords,dec_coords,mass_densities,titles)
@@ -722,7 +774,7 @@ def integrate_all_graphs(plot=False):
 
 def run_for_individual(title):
     velocity,flux = calibrate("M31Backup\\"+title+".TXT",rtn=True,plot=True)
-    area, mass,zeroth_moment,first_moment, first_moment_error = integrate(velocity,flux,title,rtn=True,plot=True)
+    area, mass,mass_error, zeroth_moment,first_moment, first_moment_error = integrate(velocity,flux,title,rtn=True,plot=True)
     print(title)
     print("Area:  {0:3.2f} \n Mass: {1:3.2f} \n Zeroth Moment: {2:3.2f} \n First Moment: {3:3.2f} +-{4:3.2f}".format(area, mass,zeroth_moment,first_moment,first_moment_error))
 
@@ -732,6 +784,6 @@ FILE_COORDS = match_coords()
 AVG_MILKY_WAY = get_average_milkyway()
 
 #plot_coordinates()
-#run_for_individual("M31P95")
+#run_for_individual("M31P100")
 #plot_all_graphs()
 integrate_all_graphs(True)
