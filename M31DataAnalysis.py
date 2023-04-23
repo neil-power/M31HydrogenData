@@ -347,6 +347,7 @@ def plot_mass_contour(ra_coords,dec_coords,results,titles):
     plt.ylabel('Declination [degrees]')
     plt.xlabel('Right Ascension [degrees]')
     plt.title("Neutral HI mass density contour")
+    
 
 def get_error_on_mean_speed(flux, velocity):
     flux[flux<0] = 0
@@ -362,6 +363,7 @@ def plot_velocity_contour(ra_coords,dec_coords,results,results_errors, titles):
     plt.ylabel('Declination [degrees]')
     plt.xlabel('Right Ascension [degrees]')
     plt.title("Velocity contour")
+    plt.gca().invert_xaxis()
 
     results_dict = {}
     errors_dict = {}
@@ -384,7 +386,7 @@ def plot_velocity_contour(ra_coords,dec_coords,results,results_errors, titles):
     #x = x*np.cos(np.deg2rad(M31_tilt)) -y*np.sin(np.deg2rad(M31_tilt))
     #y = x*np.cos(np.deg2rad(M31_tilt)) +y*np.sin(np.deg2rad(M31_tilt))
 
-    #x = np.flip(x)
+    x = np.flip(x)
 
     levels=np.linspace(min(results),max(results),30)
     #levels = np.linspace(-800,200,20)
@@ -394,6 +396,8 @@ def plot_velocity_contour(ra_coords,dec_coords,results,results_errors, titles):
     #plt.gca().set_aspect('equal')
     plt.show()
 
+
+ 
 def plot_velocity_curve(pos_vals,speed_vals,pos_errors,speed_errors):
     plt.errorbar(pos_vals,speed_vals,yerr=speed_errors,xerr=pos_errors,fmt="rx")
     #plt.plot(pos_vals,speed_vals,"rx")
@@ -416,6 +420,7 @@ def plot_mass_curve(radius_values, speed_values, radius_errors, speed_errors,H_m
     radius_values /= Parsec*1e3
     mass /= M_sun
     mass_errors/= M_sun
+    #plt.figure(facecolor = "lime")
     plt.errorbar(radius_values,mass,yerr=mass_errors, xerr=radius_errors,fmt="bx")
     fit = fit_equation(radius_values,mass,1)
     plt.plot(radius_values,np.polyval(fit,radius_values),"r--")
@@ -431,7 +436,8 @@ def plot_mass_curve(radius_values, speed_values, radius_errors, speed_errors,H_m
     print(f"The mass of M31 by rotational velocity at {max_dist:3.2f} ± {max_dist_error:3.2f} kpc is {total_mass:3.2e} ± {total_mass_error:3.2e} solar masses." )
     print(f"This gives a neutral hydrogen by mass value of {ratio:3.2f} ± {ratio_error:3.2f} %")
     
-    
+    #plt.gca().set_facecolor("mediumblue")
+    #plt.gca().patch.set_facecolor("mediumblue")
     plt.show()
 
 def plot_deprojection(ra_coords , dec_coords, titles,M31_tilt,M31_inc):
@@ -580,6 +586,7 @@ def velocity_contour(ra_coords,dec_coords,results,results_errors, titles,rtn=Fal
     M31_tilt = np.rad2deg(0.833)  #FIX (or not)
     M31_tilt_error= get_tilt_error(axis_uncertainty)
     #print("M31 Major Axis Gradient: ", M31_major_grad)
+    print("\nM31 Parameters \n")
     print(f"M31 Semi-Major Axis: {M31_semi_major_axis_length:3.2f} ± {axis_uncertainty:3.2f} degrees")
     print(f"M31 Semi-Minor Axis: {M31_semi_minor_axis_length:3.2f} ± {axis_uncertainty:3.2f} degrees")
     print(f"M31 Inclination: {M31_inc:3.2f} ± {M31_inc_error:3.2f} degrees")
@@ -814,17 +821,18 @@ def integrate_all_graphs(plot=False):
         mass_1 = avg_mass_density*total_M31_area
         mass_1_error = avg_mass_density_error*total_M31_area
 
+        print("Observation Parameters \n")
         print("Observed area for one scan is {0:3.2f} ± {1:3.2f} kpc^2".format(scan_area, scan_area_error))
         print("Total observed area for all scans is {0:3.2e} kpc^2".format(total_scan_area))
         print("Estimated M31 area by boxes is {0:3.2f} ± {1:3.2f} kpc^2".format(total_M31_area,total_M31_area_error))
         print("The average zeroth moment is {0:3.2f} K km/s".format(avg_zeroth_moment))
         print("The average mass density is {0:3.2e} solar masses per kpc^2".format(avg_mass_density))
 
-        print("Neutral Hydrogen Mass")
+        print("\nNeutral Hydrogen Mass \n")
         print("The total mass, using average mass density times area, is {0:3.2e} ± {1:3.2e} solar masses".format(mass_1,mass_1_error))
-        print("Baseline subtraction error: {0:3.2f}%".format(100*np.average(baseline_mass_density_errors)/avg_mass_density))
-        print("Local hydrogen subtraction error: {0:3.2f}%".format(100*np.average(local_mass_density_errors)/avg_mass_density))
-        print("M31 Area error: {0:3.2f}%".format(100*total_M31_area_error/total_M31_area))
+        print("\tBaseline subtraction error: {0:3.2f}%".format(100*np.average(baseline_mass_density_errors)/avg_mass_density))
+        print("\tLocal hydrogen subtraction error: {0:3.2f}%".format(100*np.average(local_mass_density_errors)/avg_mass_density))
+        print("\tM31 Area error: {0:3.2f}%".format(100*total_M31_area_error/total_M31_area))
         #print("The total mass, scaling each scan to a box, is {0:3.2e} ± {1:3.2e} solar masses".format(total_mass, total_mass_error))
 
     if plot:
