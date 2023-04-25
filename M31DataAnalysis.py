@@ -306,17 +306,17 @@ def plot_coordinates():
     #beam width is 11.6 arcsec
     ax.set_aspect('equal', adjustable='datalim')
     radius_deg = (11.6/60)/2
-    plot_shapes = False
+    plot_shapes = True
     for i,text in enumerate(titles):
         ax.annotate(text,(ra_coords[i],dec_coords[i]))
         if plot_shapes:
-            circle1 = plt.Circle((ra_coords[i],dec_coords[i]), radius_deg, color='b', fill=False)
-            ax.add_patch(circle1)
+            #circle1 = plt.Circle((ra_coords[i],dec_coords[i]), radius_deg, color='b', fill=False)
+            #ax.add_patch(circle1)
             height = 0.5#*np.cos(np.deg2rad(dec_coords[i]))
             width = 0.33
             rectangle1 = plt.Rectangle((ra_coords[i]-height/2,dec_coords[i]-width/2),height,width,color='b', fill=False)
             ax.add_patch(rectangle1)
-    #plt.show()
+    plt.show()
 
 def plot_mass_contour(ra_coords,dec_coords,results,titles):
     plt.gca().invert_xaxis()
@@ -335,19 +335,15 @@ def plot_mass_contour(ra_coords,dec_coords,results,titles):
     x = np.unique(ra_coords)
     y = np.unique(dec_coords)
     x = np.flip(x)
-    
-    levels=np.linspace(min(results),max(results),15)
+
+    levels=np.linspace(0,max(results),15)
     X,Y = np.meshgrid(x,y) # 12 x 9
     #plt.xlim(max(x),8.4)
     #plt.ylim(38.5,42.7)
     plt.contourf(X,Y,z,levels=levels)
-    plt.colorbar(label="")
-    plt.show()
-    #plt.gca().invert_xaxis()
-    plt.ylabel('Declination [degrees]')
-    plt.xlabel('Right Ascension [degrees]')
-    plt.title("Neutral HI mass density contour")
-    
+    plt.colorbar(label="Neutral HI mass (solar masses/kpc^2)")
+    plt.show()    
+
 
 def get_error_on_mean_speed(flux, velocity):
     flux[flux<0] = 0
@@ -392,12 +388,12 @@ def plot_velocity_contour(ra_coords,dec_coords,results,results_errors, titles):
     #levels = np.linspace(-800,200,20)
     X,Y = np.meshgrid(x,y) # 12 x 9
     plt.contour(X,Y,z,levels=levels)
-    plt.colorbar()
+    plt.colorbar(label="Velocity (km/s)")
     #plt.gca().set_aspect('equal')
     plt.show()
 
 
- 
+
 def plot_velocity_curve(pos_vals,speed_vals,pos_errors,speed_errors):
     plt.errorbar(pos_vals,speed_vals,yerr=speed_errors,xerr=pos_errors,fmt="rx")
     #plt.plot(pos_vals,speed_vals,"rx")
@@ -426,7 +422,7 @@ def plot_mass_curve(radius_values, speed_values, radius_errors, speed_errors,H_m
     plt.plot(radius_values,np.polyval(fit,radius_values),"r--")
     plt.title("Mass curve")
     plt.xlabel("Distance from M31 centre (kpc)")
-    plt.ylabel("Mass (solar masses)") 
+    plt.ylabel("Mass (solar masses)")
     max_dist = np.max(radius_values)
     max_dist_error = radius_errors[np.argmax(radius_values)]
     total_mass = np.polyval(fit,max_dist)
@@ -435,10 +431,27 @@ def plot_mass_curve(radius_values, speed_values, radius_errors, speed_errors,H_m
     ratio_error = np.sqrt((H_mass_error/H_mass)**2+(total_mass_error/total_mass)**2)*ratio
     print(f"The mass of M31 by rotational velocity at {max_dist:3.2f} ± {max_dist_error:3.2f} kpc is {total_mass:3.2e} ± {total_mass_error:3.2e} solar masses." )
     print(f"This gives a neutral hydrogen by mass value of {ratio:3.2f} ± {ratio_error:3.2f} %")
-    
+
     #plt.gca().set_facecolor("mediumblue")
     #plt.gca().patch.set_facecolor("mediumblue")
     plt.show()
+    
+def get_x_y(r_coord, dec_coord,M31_tilt,M31_inc):
+    #Convert from degrees to kpc coordinate system
+    #centred at (centre ra, centre dec)
+    x_kpc_radec = M31DIST*np.deg2rad(r_coord-M31CENTRE[0])
+    y_kpc_radec = M31DIST*np.deg2rad(dec_coord-M31CENTRE[1])
+
+    #Convert from ra dec axis to major/minor axis
+    theta = -np.deg2rad(M31_tilt) #might neeed to be 90- or 360-
+    x_kpc_semis = x_kpc_radec*np.cos(theta) -y_kpc_radec*np.sin(theta)
+    y_kpc_semis = x_kpc_radec*np.cos(theta) +y_kpc_radec*np.sin(theta)
+
+    #Convert from observed distances to actual distances
+    #taking into account inclination
+    x_plane = x_kpc_semis
+    y_plane = y_kpc_semis*np.sin(np.deg2rad(M31_inc))
+    return x_plane,y_plane
 
 def plot_deprojection(ra_coords , dec_coords, titles,M31_tilt,M31_inc):
     #PLot coordinates in ra, dec
@@ -509,23 +522,6 @@ def plot_deprojection(ra_coords , dec_coords, titles,M31_tilt,M31_inc):
     plt.show()
 
 
-def get_x_y(r_coord, dec_coord,M31_tilt,M31_inc):
-    #Convert from degrees to kpc coordinate system
-    #centred at (centre ra, centre dec)
-    x_kpc_radec = M31DIST*np.deg2rad(r_coord-M31CENTRE[0])
-    y_kpc_radec = M31DIST*np.deg2rad(dec_coord-M31CENTRE[1])
-
-    #Convert from ra dec axis to major/minor axis
-    theta = -np.deg2rad(M31_tilt) #might neeed to be 90- or 360-
-    x_kpc_semis = x_kpc_radec*np.cos(theta) -y_kpc_radec*np.sin(theta)
-    y_kpc_semis = x_kpc_radec*np.cos(theta) +y_kpc_radec*np.sin(theta)
-
-    #Convert from observed distances to actual distances
-    #taking into account inclination
-    x_plane = x_kpc_semis
-    y_plane = y_kpc_semis/np.sin(np.deg2rad(M31_inc))
-    return x_plane,y_plane
-
 def get_r_theta(r_coord, dec_coord,M31_tilt,M31_inc):
     x_plane, y_plane = get_x_y(r_coord, dec_coord,M31_tilt,M31_inc)
     dist_to_centre = np.sqrt(x_plane**2+y_plane**2)
@@ -544,8 +540,8 @@ def get_tilt_error(dx):
     min_tilt = np.rad2deg(angle(0,min_grad))
     max_tilt = np.rad2deg(angle(0,max_grad))
     return np.abs(max_tilt-min_tilt)
-    
-    
+
+
 def grad(p1,p2):
     x1,y1 = p1
     x2,y2 = p2
@@ -556,19 +552,23 @@ def angle(grad1,grad2):
 
 def get_actual_speed_error(actual_speed,point_speed,point_error):
     rel_actual_error = np.sqrt((point_error/point_speed)**2+(0.0136)**2+(0.0186)**2)
-    #add theta, i errors
     return rel_actual_error*actual_speed
 
-def get_r_error(x_obs,y_obs,M31_tilt,M31_tilt_error,M31_inc,M31_inc_error):
+def get_r_error(r_coord, dec_coord,M31_tilt,M31_tilt_error,M31_inc,M31_inc_error,r):
+    x_obs,y_obs = np.abs(get_x_y(r_coord, dec_coord, M31_tilt, M31_inc))
     dx = (M31DIST_UNC/M31DIST)*x_obs
     dy = (M31DIST_UNC/M31DIST)*y_obs
-    dtilt = M31_tilt_error
-    x_err = np.cos(M31_tilt)*dx +np.sin(M31_tilt)*dy + (x_obs*np.sin(M31_tilt)+y_obs*np.cos(M31_tilt))*dtilt
-    y_err = x_err
-    y_err = np.sqrt((y_err/y_obs)**2+(M31_inc_error/M31_inc)**2)
+    M31_tilt_rad = np.deg2rad(M31_tilt)
+    dtilt = M31_tilt_error/M31_tilt
+    xy_rel_error = np.sqrt( (np.cos(M31_tilt_rad)*dx)**2 + (np.sin(M31_tilt_rad)*dy)**2 + ((x_obs*np.sin(M31_tilt_rad)+y_obs*np.cos(M31_tilt_rad))*dtilt)**2)
+    #print(np.sqrt( (np.cos(M31_tilt_rad)*dx)**2 + (np.sin(M31_tilt_rad)*dy)**2))
+    x_err = xy_rel_error*x_obs
+    y_err = xy_rel_error*y_obs
+    y_err = y_obs*np.sqrt((y_err/y_obs)**2+(M31_inc_error/M31_inc)**2)
     r_error = np.sqrt((x_err/x_obs)**2+(y_err/y_obs)**2)
+    #print(r_error)
     return r_error
-    
+
 def velocity_contour(ra_coords,dec_coords,results,results_errors, titles,rtn=False):
     #Do subtract bulk motion (speed of centre, taken to be 0) and take absolute value
     #Convert distance to centre into kpc not degrees
@@ -616,7 +616,7 @@ def velocity_contour(ra_coords,dec_coords,results,results_errors, titles,rtn=Fal
 
     for t in diagonal_titles:
         r,semi_major_angle = get_r_theta(*FILE_COORDS["M31P"+str(t)],M31_tilt,M31_inc)
-        r_err = get_r_error(*FILE_COORDS["M31P"+str(t)],M31_tilt,M31_tilt_error,M31_inc,M31_inc_error)
+        r_err = get_r_error(*FILE_COORDS["M31P"+str(t)],M31_tilt,M31_tilt_error,M31_inc,M31_inc_error,r)
         dpos_errors = np.append(dpos_errors,r_err)
         point_speed = results_dict["M31P"+str(t)]
 
@@ -636,8 +636,10 @@ def velocity_contour(ra_coords,dec_coords,results,results_errors, titles,rtn=Fal
     speed_errors = np.array([])
     pos_errors = np.array([])
     for title in titles:
+        #print(title)
         r,semi_major_angle = get_r_theta(*FILE_COORDS[title],M31_tilt,M31_inc)
-        r_err = get_r_error(*FILE_COORDS["M31P"+str(t)],M31_tilt,M31_tilt_error,M31_inc,M31_inc_error)
+
+        r_err = get_r_error(*FILE_COORDS[title],M31_tilt,M31_tilt_error,M31_inc,M31_inc_error,r)
         pos_errors = np.append(pos_errors,r_err)
         point_speed = results_dict[title]
         point_speed = np.abs(point_speed-M31_bulk_motion)
