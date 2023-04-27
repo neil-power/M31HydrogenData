@@ -5,6 +5,7 @@ import math
 import numpy as np #Import numpy for maths calculations
 import matplotlib.pyplot as plt #Import pyplot for plotting the graph
 from scipy.integrate import simpson
+from scipy.optimize import curve_fit
 
 MAX_DEGREE = 5
 S8_FLUX = 850 #K km/s
@@ -52,6 +53,9 @@ def match_coords():
 
             file_coordinates[title] = [ra,dec]
     return file_coordinates #Returns dictionary
+
+FILE_COORDS = match_coords()
+#M31CENTRE = FILE_COORDS["M31P74"] #(9.9,40.75)
 
 # DEFINE MATHS FUNCTIONS --------------------------------------------------
 
@@ -122,11 +126,8 @@ def get_average_milkyway(plot=False):
 def get_local_H_removal_error(velocity,flux,title):
     #Give removed milky way
     local_removal_error = 0
-    #print(int_params[title][2])
     if int(int_params[title][2]) == 0: #If no overlap
         local_removal_error += 14604*(velocity[1]-velocity[0])*np.sum(flux[370:380])
-        #plt.plot(velocity[370:400],flux[370:400])
-        #plt.show()
     return np.abs(local_removal_error)
 
 #REMOVING PEAKS ------------------------------------------
@@ -234,8 +235,6 @@ def get_M31_area_error(dec_coords):
     area_error_rel =  (M31DIST_UNC/M31DIST)
     area_error = area_error_rel*get_M31_area(dec_coords)
     return area_error
-
-
 
 #PLOTTING -------------------------------------------------------------------
 
@@ -416,30 +415,39 @@ def plot_mass_curve(radius_values, speed_values, radius_errors, speed_errors,H_m
     radius_values /= Parsec*1e3
     mass /= M_sun
     mass_errors/= M_sun
-    #plt.figure(facecolor = "lime")
+    
     plt.errorbar(radius_values,mass,yerr=mass_errors, xerr=radius_errors,fmt="bx")
-    fit = fit_equation(radius_values,mass,1)
-    plt.plot(radius_values,np.polyval(fit,radius_values),"r--")
+    def cubic(x,a):
+        return a*x**3
+    #fit = curve_fit(cubic,radius_values,mass,sigma=mass_errors/mass,absolute_sigma=True)[0]
+    fit = np.polyfit(radius_values,mass,1)
+    
+    #print(fit)
+    
+    #plt.plot(np.sort(radius_values),np.polyval(fit,np.sort(radius_values)),"r--")
+    #plt.plot(np.sort(radius_values),cubic(np.sort(radius_values),*fit),"r--")
     plt.title("Mass curve")
     plt.xlabel("Distance from M31 centre (kpc)")
     plt.ylabel("Mass (solar masses)")
+    plt.show()
+    
     max_dist = np.max(radius_values)
-    max_dist_error = radius_errors[np.argmax(radius_values)]
+    max_dist_error = np.max(radius_values[-4:-1])-np.min(radius_values[-4:-1])
     total_mass = np.polyval(fit,max_dist)
-    total_mass_error = (max_dist_error/max_dist)*total_mass
+    #total_mass = cubic(max_dist,*fit)
+    total_mass_error = total_mass*(max_dist_error/max_dist) #*(max_dist_error/max_dist)
     ratio = H_mass/total_mass*100
+    #ratio_error = ((H_mass_error/H_mass) + (total_mass_error/total_mass))*ratio
     ratio_error = np.sqrt((H_mass_error/H_mass)**2+(total_mass_error/total_mass)**2)*ratio
     print(f"The mass of M31 by rotational velocity at {max_dist:3.2f} ± {max_dist_error:3.2f} kpc is {total_mass:3.2e} ± {total_mass_error:3.2e} solar masses." )
     print(f"This gives a neutral hydrogen by mass value of {ratio:3.2f} ± {ratio_error:3.2f} %")
 
-    #plt.gca().set_facecolor("mediumblue")
-    #plt.gca().patch.set_facecolor("mediumblue")
-    plt.show()
+    
     
 def get_x_y(r_coord, dec_coord,M31_tilt,M31_inc):
     #Convert from degrees to kpc coordinate system
     #centred at (centre ra, centre dec)
-    x_kpc_radec = M31DIST*np.deg2rad(r_coord-M31CENTRE[0])
+    x_kpc_radec = M31DIST*np.deg2rad(r_coord-M31CENTRE[0])*np.sin(np.deg2rad(90-dec_coord))
     y_kpc_radec = M31DIST*np.deg2rad(dec_coord-M31CENTRE[1])
 
     #Convert from ra dec axis to major/minor axis
@@ -467,6 +475,7 @@ def plot_deprojection(ra_coords , dec_coords, titles,M31_tilt,M31_inc):
 
     #Plot coordinates in dx, dy
     x,y = M31DIST*np.deg2rad(np.array(ra_coords)-M31CENTRE[0]) , M31DIST*np.deg2rad(np.array(dec_coords)-M31CENTRE[1])
+    #x = x*np.sin(np.deg2rad(90 - np.array(dec_coords)))
     fig, ax = plt.subplots()
     ax.plot(x,y,"x")
     ax.plot([min(x),max(x)],[min(y),max(y)],"r-")
@@ -565,7 +574,7 @@ def get_r_error(r_coord, dec_coord,M31_tilt,M31_tilt_error,M31_inc,M31_inc_error
     x_err = xy_rel_error*x_obs
     y_err = xy_rel_error*y_obs
     y_err = y_obs*np.sqrt((y_err/y_obs)**2+(M31_inc_error/M31_inc)**2)
-    r_error = np.sqrt((x_err/x_obs)**2+(y_err/y_obs)**2)
+    r_error = np.sqrt((x_err/x_obs)**2+(y_err/y_obs)**2)#*r
     #print(r_error)
     return r_error
 
@@ -575,9 +584,9 @@ def velocity_contour(ra_coords,dec_coords,results,results_errors, titles,rtn=Fal
 
 
     M31_major_grad = grad(FILE_COORDS["M31P120"],FILE_COORDS["M31P18"])
-    M31_bulk_motion = -289
+    M31_bulk_motion = -289 #-289
 
-    axis_uncertainty = 0.1 #degrees
+    axis_uncertainty = 0.5 #degrees
     M31_semi_major_axis_length = dist_from_point(*FILE_COORDS["M31P120"],*FILE_COORDS["M31P18"])
     M31_semi_minor_axis_length = dist_from_point(*FILE_COORDS["M31P86"],*FILE_COORDS["M31P53"])
     M31_inc = np.rad2deg(np.arccos(M31_semi_minor_axis_length/M31_semi_major_axis_length))
@@ -605,7 +614,7 @@ def velocity_contour(ra_coords,dec_coords,results,results_errors, titles,rtn=Fal
     for i,title in enumerate(titles):
         results_dict[title] = results[i]
         errors_dict[title] = results_errors[i]
-
+   
 
     #Simple diagonal method for velocity graph -----------------------------
     diagonal_titles = [120,111,92,83,74,65,56,47,28]
@@ -669,7 +678,7 @@ def velocity_contour(ra_coords,dec_coords,results,results_errors, titles,rtn=Fal
     # print(speed_vals.size)
     # fit = fit_equation(pos_vals,speed_vals, 4)
     # #plt.plot(pos_vals, np.polyval(fit,pos_vals),"b.")
-    # poly_outlier_removal = np.where(np.abs(speed_vals-np.polyval(fit,pos_vals))<np.std(speed_vals))
+    # poly_outlier_removal = np.where(np.abs(speed_vals-np.polyval(fit,pos_vals))<3*np.std(speed_vals))
     # pos_vals = pos_vals[poly_outlier_removal]
     # speed_errors = speed_errors[poly_outlier_removal]
     # pos_errors = pos_errors[poly_outlier_removal]
@@ -850,7 +859,7 @@ def run_for_individual(title):
 
 FLUX_CALIBRATION = calibrate_flux("M31Backup\\S8A.TXT")
 #print(FLUX_CALIBRATION)
-FILE_COORDS = match_coords()
+
 AVG_MILKY_WAY = get_average_milkyway()
 
 #plot_coordinates()
