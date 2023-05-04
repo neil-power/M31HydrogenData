@@ -105,7 +105,7 @@ def calibrate_flux(path):
     flux_without_baseline = elevation_calibrated_flux - np.polyval(fit, velocity)
 
     area = simpson(flux_without_baseline, velocity)
-    #print(area)
+    print(S8_FLUX/area)
     return S8_FLUX/area
 
 def get_average_milkyway(plot=False):
@@ -239,8 +239,8 @@ def get_M31_area_error(dec_coords):
 #PLOTTING -------------------------------------------------------------------
 
 def plot_velocity_baseline(velocity,flux,title):
-    plt.xlabel('Velocity [kms^-1]')
-    plt.ylabel('Uncalibrated Flux')
+    plt.xlabel(r"Velocity ($kms^{-1}$)",fontsize=14)
+    plt.ylabel('Uncalibrated Flux',fontsize=14)
     plt.title(title+ ' Velocity-Uncorrected Flux Plot')
 
     #PLOTTING DATA -----------------
@@ -250,7 +250,7 @@ def plot_velocity_baseline(velocity,flux,title):
     crops = crop_params[title]
     peaks = np.array(crops[0].split(" ")).astype(int)
 
-    plt.plot(velocity[peaks],flux[peaks],"r.",zorder=0)
+    #plt.plot(velocity[peaks],flux[peaks],"r.",zorder=0)
 
     fit = fit_equation(cropped_velocity,cropped_flux)
 
@@ -259,8 +259,10 @@ def plot_velocity_baseline(velocity,flux,title):
     plt.plot(velocity,np.polyval(fit, velocity), FD,zorder=5)
 
     plt.plot(velocity,flux,PD,zorder=0)
-
-    plt.legend(["Peaks","Peak Removed Data", "Fit","Data"]) #Add a legend to the graph
+    plt.yticks(fontsize=14)
+    plt.xticks(fontsize=14)
+    plt.legend(["Peak Removed Signal", "Baseline Fit","Signal"],fontsize=12)
+    #plt.legend(["Peaks","Peak Removed Data", "Fit","Data"],fontsize=12) 
     plt.show() #Displays graph
 
 def plot_velocity_without_baseline(velocity,flux,title):
@@ -296,7 +298,8 @@ def plot_coordinates():
             ra_coords.append(FILE_COORDS[title][0])
             dec_coords.append(FILE_COORDS[title][1])
             titles.append(title[4:])
-
+    print(min(ra_coords),min(dec_coords))
+    print(max(ra_coords),max(dec_coords))
     plt.xlabel('Right Ascension [degrees]')
     plt.ylabel('Declination [degrees]')
     plt.title("Coordinates")
@@ -319,9 +322,55 @@ def plot_coordinates():
 
 def plot_mass_contour(ra_coords,dec_coords,results,titles):
     plt.gca().invert_xaxis()
-    plt.ylabel('Declination [degrees]')
-    plt.xlabel('Right Ascension [degrees]')
-    plt.title("Neutral HI mass density contour")
+    plt.ylabel('Declination (degrees)',fontsize=14)
+    plt.xlabel('Right Ascension (degrees)',fontsize=14)
+    #plt.title("Neutral HI mass density contour")
+
+
+    z = np.zeros((9,12))
+    for i,title in enumerate(titles):
+        title_nums = title[4:]
+        x_index = int(title_nums[-1])
+        y_index = int(title_nums[:-1])-1
+        z[x_index][y_index] =  results[i] #*1e-6 #convert to million solar masses
+
+    z = np.transpose(z)
+    x = np.unique(ra_coords)
+    y = np.unique(dec_coords)
+    x = np.flip(x)
+
+    levels=np.linspace(0,max(results)*1e-6,15)
+    X,Y = np.meshgrid(x,y) # 12 x 9
+    #plt.xlim(max(x),8.4)
+    #plt.ylim(38.5,42.7)
+    plt.contourf(X,Y,z,levels=levels)
+    #cb = plt.colorbar(format=lambda x, _: f"{x:2.1f}")
+    #cb.set_label(r"Neutral HI mass ($\times 10^{6} M_{\odot} kpc^{-2}$)",fontsize=14)
+    cb = plt.colorbar()
+    cb.set_label(r"Neutral HI mass ($M_{\odot} kpc^{-2}$)",fontsize=14)
+    cb.ax.tick_params(labelsize=13)
+    plt.yticks(fontsize=13)
+    plt.xticks(fontsize=13)
+    plt.show()    
+
+
+def get_error_on_mean_speed(flux, velocity):
+    flux[flux<0] = 0
+    I1 = np.sum(flux*velocity)
+    I2 = np.sum(flux)
+    I3 = np.sum(flux*velocity**2)
+
+    variance = I3/I2 - (I1/I2)**2
+    error = np.sqrt(variance)
+    return error
+
+def plot_velocity_contour(ra_coords,dec_coords,results,results_errors, titles):
+    
+    """
+    plt.gca().invert_xaxis()
+    plt.ylabel('Declination (degrees)',fontsize=14)
+    plt.xlabel('Right Ascension (degrees)',fontsize=14)
+    #plt.title("Neutral HI mass density contour")
 
     z = np.zeros((9,12))
     for i,title in enumerate(titles):
@@ -340,24 +389,16 @@ def plot_mass_contour(ra_coords,dec_coords,results,titles):
     #plt.xlim(max(x),8.4)
     #plt.ylim(38.5,42.7)
     plt.contourf(X,Y,z,levels=levels)
-    plt.colorbar(label="Neutral HI mass (solar masses/kpc^2)")
-    plt.show()    
-
-
-def get_error_on_mean_speed(flux, velocity):
-    flux[flux<0] = 0
-    I1 = np.sum(flux*velocity)
-    I2 = np.sum(flux)
-    I3 = np.sum(flux*velocity**2)
-
-    variance = I3/I2 - (I1/I2)**2
-    error = np.sqrt(variance)
-    return error
-
-def plot_velocity_contour(ra_coords,dec_coords,results,results_errors, titles):
-    plt.ylabel('Declination [degrees]')
-    plt.xlabel('Right Ascension [degrees]')
-    plt.title("Velocity contour")
+    cb = plt.colorbar()
+    cb.set_label(r"Neutral HI mass ($M_{\odot} kpc^{-2}$)",fontsize=14)
+    cb.ax.tick_params(labelsize=13)
+    plt.yticks(fontsize=13)
+    plt.xticks(fontsize=13)
+    plt.show()
+    """
+    plt.ylabel('Declination (degrees)',fontsize=14)
+    plt.xlabel('Right Ascension (degrees)',fontsize=14)
+    #plt.title("Velocity contour")
     plt.gca().invert_xaxis()
 
     results_dict = {}
@@ -387,7 +428,11 @@ def plot_velocity_contour(ra_coords,dec_coords,results,results_errors, titles):
     #levels = np.linspace(-800,200,20)
     X,Y = np.meshgrid(x,y) # 12 x 9
     plt.contour(X,Y,z,levels=levels)
-    plt.colorbar(label="Velocity (km/s)")
+    cb = plt.colorbar()
+    cb.set_label(r"Velocity ($kms^{-1}$)",fontsize=14)
+    cb.ax.tick_params(labelsize=13)
+    plt.yticks(fontsize=13)
+    plt.xticks(fontsize=13)
     #plt.gca().set_aspect('equal')
     plt.show()
 
@@ -397,9 +442,11 @@ def plot_velocity_curve(pos_vals,speed_vals,pos_errors,speed_errors):
     plt.errorbar(pos_vals,speed_vals,yerr=speed_errors,xerr=pos_errors,fmt="rx")
     #plt.plot(pos_vals,speed_vals,"rx")
 
-    plt.title("Velocity curve")
-    plt.xlabel("Distance from M31 centre (kpc)")
-    plt.ylabel("Velocity (km/s)")
+    #plt.title("Velocity curve")
+    plt.xlabel(r"Distance from M31 centre ($kpc$)",fontsize=14)
+    plt.ylabel(r"Velocity ($kms^{-1}$)",fontsize=14)
+    plt.yticks(fontsize=13)
+    plt.xticks(fontsize=13)
     #plt.ylim([0,500])
     plt.show()
 
@@ -413,8 +460,8 @@ def plot_mass_curve(radius_values, speed_values, radius_errors, speed_errors,H_m
     mass = (speed_values**2*radius_values)/G
     mass_errors = 2*pspeed_errors*mass
     radius_values /= Parsec*1e3
-    mass /= M_sun
-    mass_errors/= M_sun
+    mass /= M_sun #*1e12
+    mass_errors/= M_sun #*1e12
     
     plt.errorbar(radius_values,mass,yerr=mass_errors, xerr=radius_errors,fmt="bx")
     def cubic(x,a):
@@ -426,9 +473,12 @@ def plot_mass_curve(radius_values, speed_values, radius_errors, speed_errors,H_m
     
     #plt.plot(np.sort(radius_values),np.polyval(fit,np.sort(radius_values)),"r--")
     #plt.plot(np.sort(radius_values),cubic(np.sort(radius_values),*fit),"r--")
-    plt.title("Mass curve")
-    plt.xlabel("Distance from M31 centre (kpc)")
-    plt.ylabel("Mass (solar masses)")
+    #plt.title("Mass curve")
+    plt.xlabel(r"Distance from M31 centre ($kpc$)",fontsize=14)
+    #plt.ylabel(r"Mass ($\times 10^{12} M_{\odot}$)",fontsize=14)
+    plt.ylabel(r"Mass ($\M_{\odot}$)",fontsize=14)
+    plt.yticks(fontsize=13)
+    plt.xticks(fontsize=13)
     plt.show()
     
     max_dist = np.max(radius_values)
@@ -550,7 +600,6 @@ def get_tilt_error(dx):
     max_tilt = np.rad2deg(angle(0,max_grad))
     return np.abs(max_tilt-min_tilt)
 
-
 def grad(p1,p2):
     x1,y1 = p1
     x2,y2 = p2
@@ -584,8 +633,7 @@ def velocity_contour(ra_coords,dec_coords,results,results_errors, titles,rtn=Fal
 
 
     M31_major_grad = grad(FILE_COORDS["M31P120"],FILE_COORDS["M31P18"])
-    M31_bulk_motion = -289 #-289
-
+    
     axis_uncertainty = 0.5 #degrees
     M31_semi_major_axis_length = dist_from_point(*FILE_COORDS["M31P120"],*FILE_COORDS["M31P18"])
     M31_semi_minor_axis_length = dist_from_point(*FILE_COORDS["M31P86"],*FILE_COORDS["M31P53"])
@@ -600,13 +648,13 @@ def velocity_contour(ra_coords,dec_coords,results,results_errors, titles,rtn=Fal
     print(f"M31 Semi-Minor Axis: {M31_semi_minor_axis_length:3.2f} ± {axis_uncertainty:3.2f} degrees")
     print(f"M31 Inclination: {M31_inc:3.2f} ± {M31_inc_error:3.2f} degrees")
     print(f"M31 Semi-major axis tilt: {M31_tilt:3.2f} ± {M31_tilt_error:3.2f} degrees")
-    print(f"M31 Bulk motion (centre speed): {M31_bulk_motion:3.2f} km/s")
+    
 
     #Plot plot_deprojection graphs ----------------------
     #plot_deprojection(ra_coords, dec_coords, titles,M31_tilt,M31_inc)
 
     #Plot velocity contour ----------------------
-
+    
     plot_velocity_contour(ra_coords, dec_coords, results, results_errors, titles)
 
     results_dict = {}
@@ -614,8 +662,9 @@ def velocity_contour(ra_coords,dec_coords,results,results_errors, titles,rtn=Fal
     for i,title in enumerate(titles):
         results_dict[title] = results[i]
         errors_dict[title] = results_errors[i]
-   
-
+    M31_bulk_motion = round(results_dict["M31P74"])
+    M31_bulk_motion_error = errors_dict["M31P74"]
+    print(f"M31 Bulk motion (centre speed): {M31_bulk_motion:3.0f} ± {M31_bulk_motion_error:3.2f} km/s")
     #Simple diagonal method for velocity graph -----------------------------
     diagonal_titles = [120,111,92,83,74,65,56,47,28]
     dspeed_vals = np.array([])
@@ -660,33 +709,38 @@ def velocity_contour(ra_coords,dec_coords,results,results_errors, titles,rtn=Fal
         speed_errors = np.append(speed_errors, actual_error)
 
         pos_vals = np.append(pos_vals, r)
+        
+    #speed_vals[speed_vals>1000] = 0
+    #speed_vals[speed_errors>400] = 0
+    #plot_velocity_contour(ra_coords, dec_coords, speed_vals, speed_errors, titles)
 
-    #print(speed_vals.size)
+    print(speed_vals.size)
     extreme_outlier_removal = np.where(speed_vals<1000)
     pos_vals = pos_vals[extreme_outlier_removal]
     speed_errors = speed_errors[extreme_outlier_removal]
     pos_errors = pos_errors[extreme_outlier_removal]
     speed_vals = speed_vals[extreme_outlier_removal]
-    #print(speed_vals.size)
+    print(speed_vals.size)
 
-    extreme_error_removal = np.where(speed_errors<400)
+    extreme_error_removal = np.where(speed_errors<200)
     pos_vals = pos_vals[extreme_error_removal]
     speed_errors = speed_errors[extreme_error_removal]
     pos_errors = pos_errors[extreme_error_removal]
     speed_vals = speed_vals[extreme_error_removal]
 
-    # print(speed_vals.size)
-    # fit = fit_equation(pos_vals,speed_vals, 4)
-    # #plt.plot(pos_vals, np.polyval(fit,pos_vals),"b.")
-    # poly_outlier_removal = np.where(np.abs(speed_vals-np.polyval(fit,pos_vals))<3*np.std(speed_vals))
-    # pos_vals = pos_vals[poly_outlier_removal]
-    # speed_errors = speed_errors[poly_outlier_removal]
-    # pos_errors = pos_errors[poly_outlier_removal]
-    # speed_vals = speed_vals[poly_outlier_removal]
+    print(speed_vals.size)
+    fit = fit_equation(pos_vals,speed_vals, 4)
+    #plt.plot(pos_vals, np.polyval(fit,pos_vals),"b.")
+    poly_outlier_removal = np.where(np.abs(speed_vals-np.polyval(fit,pos_vals))<1.5*np.std(speed_vals))
+    pos_vals = pos_vals[poly_outlier_removal]
+    speed_errors = speed_errors[poly_outlier_removal]
+    pos_errors = pos_errors[poly_outlier_removal]
+    speed_vals = speed_vals[poly_outlier_removal]
 
-    # print(speed_vals.size)
+    print(speed_vals.size)
 
     plot_velocity_curve(pos_vals,speed_vals,pos_errors,speed_errors)
+    
     if rtn:
         return pos_vals, speed_vals, pos_errors, speed_errors
 
@@ -755,12 +809,18 @@ def integrate(velocity,flux,title,rtn=False,plot=False):
 
     if plot:
         plt.plot(velocity, flux,PD,zorder=0)
-        plt.plot([velocity[min_bound],velocity[min_bound]],[0,max(flux)],"r--")
-        plt.plot([velocity[max_bound],velocity[max_bound]],[0,max(flux)],"r--")
-        plt.xlabel('Velocity [kms^-1]')
-        plt.ylabel('Flux [K]')
-        plt.title(title+ ' Velocity-Flux Plot (Corrected)')
+        #plt.plot([velocity[min_bound],velocity[min_bound]],[0,max(flux)],"r--")
+        #plt.plot([velocity[max_bound],velocity[max_bound]],[0,max(flux)],"r--")
+        plt.plot()
+        plt.xlabel(r"Velocity ($kms^{-1}$)",fontsize=14)
+        plt.ylabel(r'Flux ($K$)',fontsize=14)
+        #plt.title(title+ ' Velocity-Flux Plot (Corrected)')
+        plt.plot(velocity,AVG_MILKY_WAY,"g--")
         plt.plot(local_corrected_velocity, local_corrected_flux,"r--",zorder=0)
+        
+        plt.legend(["Combined Signal", "Average Local Signal", "M31 Signal"],fontsize=12)
+        plt.yticks(fontsize=14)
+        plt.xticks(fontsize=14)
         plt.show()
 
     area = simpson(local_corrected_flux, local_corrected_velocity)
@@ -863,6 +923,7 @@ FLUX_CALIBRATION = calibrate_flux("M31Backup\\S8A.TXT")
 AVG_MILKY_WAY = get_average_milkyway()
 
 #plot_coordinates()
-#run_for_individual("M31P100")
+#run_for_individual("M31P92")
 #plot_all_graphs()
 integrate_all_graphs(True)
+#print(FILE_COORDS["M31P74"])
